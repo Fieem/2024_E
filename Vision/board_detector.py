@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 import cv2
 import numpy as np
@@ -13,6 +14,8 @@ class BoardDetectorConfig:
     board_size: int = 700
     min_area_ratio: float = 0.08
     smoothing_alpha: float = 0.35
+    angle_smoothing_alpha: float = 0.4
+    theta_zero_ref_deg: float = 0.0
     red_lower_1: tuple[int, int, int] = (0, 70, 50)
     red_upper_1: tuple[int, int, int] = (12, 255, 255)
     red_lower_2: tuple[int, int, int] = (165, 70, 50)
@@ -37,6 +40,7 @@ class BoardDetector:
     def __init__(self, config: BoardDetectorConfig) -> None:
         self.config = config
         self._smoothed_corners: np.ndarray | None = None
+        self._smoothed_angle_deg: float | None = None
 
     def detect(self, frame: np.ndarray) -> BoardDetectionResult:
         raw_mask = create_red_mask(
@@ -56,6 +60,7 @@ class BoardDetector:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         annotated = frame.copy()
         if not contours:
+            self._reset_tracking()
             self._draw_status(annotated, "Board not found")
             return BoardDetectionResult(
                 found=False,
@@ -70,6 +75,7 @@ class BoardDetector:
             if cv2.contourArea(contour) >= image_area * self.config.min_area_ratio
         ]
         if not candidates:
+            self._reset_tracking()
             self._draw_status(annotated, "Board too small")
             return BoardDetectionResult(
                 found=False,
@@ -97,6 +103,10 @@ class BoardDetector:
             frame,
             homography,
             (self.config.board_size, self.config.board_size),
+        )
+        raw_angle_deg = self._compute_top_edge_angle_deg(ordered_corners)
+        angle_deg = self._smooth_angle_deg(
+            self._normalize_angle_deg(raw_angle_deg - self.config.theta_zero_ref_deg)
         )
 
         cv2.drawContours(annotated, [contour], -1, (0, 255, 255), 2)
@@ -129,7 +139,12 @@ class BoardDetector:
             mask=mask,
             annotated_frame=annotated,
             homography=homography,
+            angle_deg=angle_deg,
         )
+
+    def _reset_tracking(self) -> None:
+        self._smoothed_corners = None
+        self._smoothed_angle_deg = None
 
     def _smooth_corners(self, corners: np.ndarray) -> np.ndarray:
         if self._smoothed_corners is None:
@@ -142,6 +157,18 @@ class BoardDetector:
         )
         return self._smoothed_corners.copy()
 
+    def _smooth_angle_deg(self, angle_deg: float) -> float:
+        if self._smoothed_angle_deg is None:
+            self._smoothed_angle_deg = angle_deg
+            return angle_deg
+
+        alpha = float(np.clip(self.config.angle_smoothing_alpha, 0.0, 1.0))
+        delta = self._normalize_angle_deg(angle_deg - self._smoothed_angle_deg)
+        self._smoothed_angle_deg = self._normalize_angle_deg(
+            self._smoothed_angle_deg + alpha * delta
+        )
+        return float(self._smoothed_angle_deg)
+
     @staticmethod
     def _order_corners(points: np.ndarray) -> np.ndarray:
         ordered = np.zeros((4, 2), dtype=np.float32)
@@ -153,6 +180,19 @@ class BoardDetector:
         ordered[1] = points[np.argmin(diffs)]
         ordered[3] = points[np.argmax(diffs)]
         return ordered
+
+    @staticmethod
+    def _compute_top_edge_angle_deg(ordered_corners: np.ndarray) -> float:
+        top_left = ordered_corners[0]
+        top_right = ordered_corners[1]
+        dx = float(top_right[0] - top_left[0])
+        dy = float(top_right[1] - top_left[1])
+        return math.degrees(math.atan2(dy, dx))
+
+    @staticmethod
+    def _normalize_angle_deg(angle_deg: float) -> float:
+        normalized = (angle_deg + 180.0) % 360.0 - 180.0
+        return float(normalized)
 
     @staticmethod
     def _draw_status(image: np.ndarray, text: str) -> None:

@@ -44,20 +44,139 @@ pip install -r requirements.txt
 python main.py
 ```
 
-常用参数：
+如果你想打开可交互调参上位机：
 
 ```bash
-python main.py --camera-index 0 --width 1280 --height 720 --board-size 700
+python tuner.py
+```
+
+常用参数：
+
+默认采集参数已经调整为：
+
+- 分辨率：`1600x1200`
+- 帧率：`60 FPS`
+- 输出格式：`MJPG / MJPEG`
+- 曝光：默认手动曝光 `180.0`，用于把偏暗画面提亮
+
+常用启动方式：
+
+```bash
+python main.py --camera-index 0 --width 1600 --height 1200 --fps 60 --pixel-format MJPG --exposure 180
 ```
 
 可选参数：
 
 - `--history-size`：历史帧数量，默认 `5`
 - `--consensus-frames`：判稳最少票数，默认 `3`
-- `--exposure`：手动曝光值
+- `--pixel-format`：相机输出格式，默认 `MJPG`
+- `--exposure`：手动曝光值，默认 `180.0`
 - `--white-balance`：手动白平衡值
+- `--sample-radius-ratio`：格心采样圆半径比例，默认 `0.42`
+- `--center-sample-radius-ratio`：中心判定圆半径比例，默认 `0.24`
+- `--min-piece-area-ratio`：判定棋子的最小面积比例，默认 `0.10`
+- `--white-min-piece-area-ratio`：白棋判定最小面积比例，默认 `0.05`
+- `--white-relaxed-piece-area-ratio`：白棋宽松面积比例，默认 `0.03`
+- `--white-center-ratio-min`：中心区域白色占比下限，默认 `0.12`
+- `--black-value-max`：黑棋灰度上限，默认 `70`
+- `--black-saturation-min`：黑棋饱和度下限，默认 `0`
+- `--black-saturation-max`：黑棋饱和度上限，默认 `255`
+- `--white-value-min`：白棋亮度下限，默认 `170`
+- `--white-saturation-max`：白棋饱和度上限，默认 `80`
+- `--empty-red-ratio-threshold`：空格红底占比阈值，默认 `0.45`
 - `--headless`：不显示窗口，仅在终端输出稳定结果
 - `--debug-dir`：按 `s` 保存调试图片时的目录
+
+说明：
+
+- 不同 USB 摄像头对曝光数值的定义可能不同，`180.0` 是当前项目的默认亮一点配置
+- 如果树莓派上画面仍偏暗，可以继续把 `--exposure` 往上调
+- 如果摄像头驱动不接受 `MJPG`，OpenCV 可能会回退到设备支持的其他格式
+- 如果空格大面积被误判成黑棋，先优先降低 `--black-value-max`
+- 如果黑棋经常被认成空格，可以先试着提高 `--black-value-max` 或降低 `--min-piece-area-ratio`
+- 如果白棋能靠平滑保持、但当前帧经常检测不到，可以先试着降低 `--white-min-piece-area-ratio`
+- 如果白棋边缘不明显、但中心很亮，可以先试着降低 `--white-relaxed-piece-area-ratio` 或降低 `--white-center-ratio-min`
+- 如果白棋经常被漏检，可以先试着降低 `--white-value-min` 或提高 `--white-saturation-max`
+- 如果空格经常被误判成棋子，可以先试着提高 `--min-piece-area-ratio` 或提高 `--empty-red-ratio-threshold`
+
+## 调参上位机
+
+`tuner.py` 会打开一个滑块控制窗口，让你实时调整：
+
+- 相机曝光
+- 红色棋盘 HSV 阈值
+- 棋盘最小面积和形态学核大小
+- 黑棋、白棋、空格相关阈值
+
+现在会分成 3 个控制窗口：
+
+- `tuner_camera_board`：相机曝光、红色棋盘阈值、棋盘面积、平滑、形态学核
+- `tuner_white_piece`：白棋相关和采样半径
+- `tuner_black_misc`：黑棋相关、通用面积阈值、空格红底阈值
+
+推荐调参顺序：
+
+1. 先在 `tuner_camera_board` 把曝光调到棋盘不发黑、白棋不过曝
+2. 再调红色 HSV，让 `red_mask` 里基本只剩棋盘主体
+3. 确认 `board_detection` 能稳定框住四角，再细调 `board_min_area_x1000 / board_kernel / board_smooth_x100 / theta_smooth_x100`
+4. 空棋盘下调 `piece_min_x100 / empty_red_x100`，让 49 格尽量都保持 `empty`
+5. 最后分别放黑棋、白棋，再调黑白两组参数
+
+关键滑块作用：
+
+- `camera_exposure`
+  - 往右：整体更亮
+  - 往左：整体更暗
+- `board_min_area_x1000`
+  - 往右：只接受更大的红色区域，能减少误锁背景
+  - 往左：更容易锁到较小棋盘，但误检风险更高
+- `board_smooth_x100`
+  - 往右：四角更稳，但跟随真实移动更慢
+  - 往左：响应更快，但角点抖动会更明显
+- `theta_smooth_x100`
+  - 往右：角度更稳，适合后续做旋转补偿
+  - 往左：角度变化响应更快
+- `board_kernel`
+  - 往右：红板区域更容易连成整体
+  - 往左：保留更多细节，但噪声也更容易进来
+- `piece_min_x100`
+  - 往右：更不容易把噪声认成棋子
+  - 往左：更容易检出小棋子，但误报也会增加
+- `white_min_area_x100`
+  - 往右：白棋需要更完整的白色连通域
+  - 往左：白棋更容易被检出
+- `white_relaxed_x100`
+  - 往右：放宽白棋补救判定，需要更大白色区域
+  - 往左：补救判定更容易触发
+- `white_center_min_x100`
+  - 往右：要求中心亮区更明显才算白棋
+  - 往左：对白棋中心亮斑要求更低
+- `white_value_min`
+  - 往右：只有更亮的区域才会被看成白棋
+  - 往左：偏灰的白棋也更容易过线
+- `white_sat_max`
+  - 往右：允许颜色更杂的亮区域被看作白棋
+  - 往左：只保留更接近白色的区域
+- `black_v_max`
+  - 往右：更亮的深色区域也可能被算成黑棋
+  - 往左：只有更黑的区域才会算黑棋
+- `empty_red_x100`
+  - 往右：更强调“红底占比高就是空格”
+  - 往左：空格更不容易被红底规则直接判空
+
+常用按键：
+
+- `q`：退出上位机
+- `p`：保存当前参数到 `vision_settings.json`
+- `s`：保存当前调试图片和识别结果
+
+保存后的 `vision_settings.json` 会被 `main.py` 自动读取，所以你调好一次以后，直接运行：
+
+```bash
+python main.py
+```
+
+就会自动带上你保存的参数。
 
 ## 调试方式
 
@@ -71,7 +190,7 @@ python main.py --camera-index 0 --width 1280 --height 720 --board-size 700
 快捷键：
 
 - `q`：退出
-- `s`：保存当前原图、定位图、透视图到调试目录
+- `s`：保存当前原图、定位图、透视图，以及当前识别结果 JSON 到调试目录
 
 ## 输出格式
 
@@ -91,9 +210,21 @@ python main.py --camera-index 0 --width 1280 --height 720 --board-size 700
 - `row`
 - `col`
 - `center_px`
+- `center_px_raw`
 - `bbox`
 - `state`
 - `confidence`
+- `diagnostics`：当前格子的判定细节，例如 `red_ratio / black_ratio / white_ratio / reason`
+
+实时稳定输出现在分两类：
+
+- `event_type = board_state`
+  - 稳定整盘状态
+  - 包含 `theta_deg`
+- `event_type = move`
+  - 仅当稳定棋盘相比上一稳定棋盘只新增 1 个棋子时输出
+  - 包含 `row / col / piece / theta_deg`
+  - 如果中途丢失棋盘，再重新识别时会先重新发布整盘状态，不跨“盲区”推断落子事件
 
 ## 后续建议
 

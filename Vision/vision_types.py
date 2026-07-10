@@ -24,6 +24,8 @@ class CellResult:
     bbox: tuple[int, int, int, int]
     state: CellState
     confidence: float
+    center_px_raw: tuple[int, int] | None = None
+    diagnostics: dict[str, Any] | None = None
 
     @classmethod
     def from_geometry(
@@ -31,6 +33,8 @@ class CellResult:
         geometry: CellGeometry,
         state: CellState = "empty",
         confidence: float = 0.0,
+        center_px_raw: tuple[int, int] | None = None,
+        diagnostics: dict[str, Any] | None = None,
     ) -> "CellResult":
         return cls(
             id=geometry.id,
@@ -40,6 +44,8 @@ class CellResult:
             bbox=geometry.bbox,
             state=state,
             confidence=confidence,
+            center_px_raw=center_px_raw,
+            diagnostics=diagnostics,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -55,6 +61,7 @@ class BoardDetectionResult:
     mask: Any = None
     annotated_frame: Any = None
     homography: Any = None
+    angle_deg: float | None = None
 
 
 @dataclass
@@ -66,6 +73,7 @@ class VisionResult:
     timestamp: float
     stable: bool
     stable_frames: int
+    theta_deg: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -76,4 +84,5 @@ class VisionResult:
             "timestamp": self.timestamp,
             "stable": self.stable,
             "stable_frames": self.stable_frames,
+            "theta_deg": self.theta_deg,
         }
