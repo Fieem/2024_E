@@ -1,0 +1,6 @@
+gomoku_ai/.idea/.gitignore
+gomoku_ai/gomoku/__pycache__/search.cpython-313.pyc
+gomoku_ai/gomoku/__pycache__/evaluate.cpython-313.pyc
+gomoku_ai/gomoku/__pycache__/board.cpython-313.pyc
+gomoku_ai/gomoku/__pycache__/ai.cpython-313.pyc
+gomoku_ai/gomoku/__pycache__/__init__.cpython-313.pyc
