@@ -18,7 +18,8 @@
 3. 找最大候选轮廓并通过最小外接矩形得到四角
 4. 透视矫正到固定尺寸棋盘图，默认 `700x700`
 5. 将标准棋盘均分为 `7x7`，得到 49 个格子的中心点和检测区域
-6. 在每个格子中用“颜色 + 连通域面积”识别空格、黑棋、白棋
+6. 在每个格子中先看红底占比判断“是否有棋子”，再用颜色 + 连通域面积判断是黑棋还是白棋
+   这样白棋不会因为亮度瞬间掉下去，就直接回到 `empty`
 7. 对最近几帧结果做多数投票，只在结果稳定后输出
 
 ## 依赖
@@ -50,6 +51,12 @@ python main.py
 python tuner.py
 ```
 
+如果你习惯用这个名字启动，也可以：
+
+```bash
+python turned.py
+```
+
 常用参数：
 
 默认采集参数已经调整为：
@@ -77,13 +84,17 @@ python main.py --camera-index 0 --width 1600 --height 1200 --fps 60 --pixel-form
 - `--min-piece-area-ratio`：判定棋子的最小面积比例，默认 `0.10`
 - `--white-min-piece-area-ratio`：白棋判定最小面积比例，默认 `0.05`
 - `--white-relaxed-piece-area-ratio`：白棋宽松面积比例，默认 `0.03`
+- `--white-norm-min-piece-area-ratio`：白棋归一化补救面积比例，默认 `0.025`
 - `--white-center-ratio-min`：中心区域白色占比下限，默认 `0.12`
 - `--black-value-max`：黑棋灰度上限，默认 `70`
 - `--black-saturation-min`：黑棋饱和度下限，默认 `0`
 - `--black-saturation-max`：黑棋饱和度上限，默认 `255`
 - `--white-value-min`：白棋亮度下限，默认 `170`
 - `--white-saturation-max`：白棋饱和度上限，默认 `80`
+- `--white-norm-value-min`：白棋归一化亮度下限，默认 `150`
+- `--white-norm-saturation-max`：白棋归一化饱和度上限，默认 `140`
 - `--empty-red-ratio-threshold`：空格红底占比阈值，默认 `0.45`
+  这是现在“有无棋子”判断的核心参数
 - `--headless`：不显示窗口，仅在终端输出稳定结果
 - `--debug-dir`：按 `s` 保存调试图片时的目录
 
@@ -97,7 +108,9 @@ python main.py --camera-index 0 --width 1600 --height 1200 --fps 60 --pixel-form
 - 如果白棋能靠平滑保持、但当前帧经常检测不到，可以先试着降低 `--white-min-piece-area-ratio`
 - 如果白棋边缘不明显、但中心很亮，可以先试着降低 `--white-relaxed-piece-area-ratio` 或降低 `--white-center-ratio-min`
 - 如果白棋经常被漏检，可以先试着降低 `--white-value-min` 或提高 `--white-saturation-max`
-- 如果空格经常被误判成棋子，可以先试着提高 `--min-piece-area-ratio` 或提高 `--empty-red-ratio-threshold`
+- 如果白棋在阴影里容易掉成空格，可以先试着降低 `--white-norm-value-min`、降低 `--white-norm-min-piece-area-ratio`，或提高 `--white-norm-saturation-max`
+- 如果空格经常被误判成棋子，先优先提高 `--empty-red-ratio-threshold`
+- 如果已经确认“有棋子”但黑白容易分错，再分别调黑棋和白棋参数
 
 ## 调参上位机
 
@@ -114,19 +127,36 @@ python main.py --camera-index 0 --width 1600 --height 1200 --fps 60 --pixel-form
 - `tuner_white_piece`：白棋相关和采样半径
 - `tuner_black_misc`：黑棋相关、通用面积阈值、空格红底阈值
 
+红板定位现在默认带一层“亮度归一化”：
+
+- 只在 `board_detector` 找红板前生效
+- 目的是减小阴影、局部过亮对 `red_mask` 的影响
+- 不会直接修改 `piece_detector.py` 用来判黑白棋的透视图
+- 如果你已经调好的黑白棋阈值比较稳定，通常不用因为这个功能重调一整轮
+
 推荐调参顺序：
 
 1. 先在 `tuner_camera_board` 把曝光调到棋盘不发黑、白棋不过曝
-2. 再调红色 HSV，让 `red_mask` 里基本只剩棋盘主体
-3. 确认 `board_detection` 能稳定框住四角，再细调 `board_min_area_x1000 / board_kernel / board_smooth_x100 / theta_smooth_x100`
-4. 空棋盘下调 `piece_min_x100 / empty_red_x100`，让 49 格尽量都保持 `empty`
-5. 最后分别放黑棋、白棋，再调黑白两组参数
+2. 如果红底受阴影影响大，先保持 `board_norm_enable=1`，再看 `clahe_clip_x10 / clahe_tile` 能不能把红板补均匀
+3. 再调红色 HSV，让 `red_mask` 里基本只剩棋盘主体
+4. 确认 `board_detection` 能稳定框住四角，再细调 `board_min_area_x1000 / board_kernel / board_smooth_x100 / theta_smooth_x100`
+5. 空棋盘下调 `piece_min_x100 / empty_red_ratio_x100`，让 49 格尽量都保持 `empty`
+6. 最后分别放黑棋、白棋，再调黑白两组参数
 
 关键滑块作用：
 
 - `camera_exposure`
   - 往右：整体更亮
   - 往左：整体更暗
+- `board_norm_enable`
+  - `1`：开启红板亮度归一化，光照不均时更稳
+  - `0`：关闭归一化，直接用原图分红色
+- `clahe_clip_x10`
+  - 往右：局部亮度补偿更强，更适合阴影明显时
+  - 往左：补偿更弱，更接近原图
+- `clahe_tile`
+  - 往右：按更大的局部块做归一化，效果更平缓
+  - 往左：按更小的局部块做归一化，对局部阴影更敏感
 - `board_min_area_x1000`
   - 往右：只接受更大的红色区域，能减少误锁背景
   - 往左：更容易锁到较小棋盘，但误检风险更高
@@ -157,10 +187,19 @@ python main.py --camera-index 0 --width 1600 --height 1200 --fps 60 --pixel-form
 - `white_sat_max`
   - 往右：允许颜色更杂的亮区域被看作白棋
   - 往左：只保留更接近白色的区域
+- `white_norm_area_x100`
+  - 往右：白棋归一化补救需要更大亮区
+  - 往左：阴影里的白棋更容易被捞回来
+- `white_norm_value_min`
+  - 往右：归一化后也要更亮才算白棋
+  - 往左：暗一些的白棋也能进入补救通道
+- `white_norm_sat_max`
+  - 往右：归一化补救允许更高饱和度，适合偏色白棋
+  - 往左：只保留更接近中性白的区域
 - `black_v_max`
   - 往右：更亮的深色区域也可能被算成黑棋
   - 往左：只有更黑的区域才会算黑棋
-- `empty_red_x100`
+- `empty_red_ratio_x100`
   - 往右：更强调“红底占比高就是空格”
   - 往左：空格更不容易被红底规则直接判空
 
@@ -186,6 +225,9 @@ python main.py
 - `board_detection`：棋盘定位结果
 - `red_mask`：红色区域分割结果
 - `warped_board`：透视矫正后的标准棋盘与识别覆盖层
+  - 每格会显示 `P0/P1` 与 `Rxx`
+  - `P1` 表示当前按红底占比判断“有棋子”
+  - `Rxx` 是当前格的红底占比 `red_ratio`
 
 快捷键：
 

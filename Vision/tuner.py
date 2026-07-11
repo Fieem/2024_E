@@ -141,7 +141,7 @@ class VisionTuner:
                         stable_frames=stable_frames,
                         theta_deg=detection.angle_deg,
                     )
-                    annotate_warped_view(warped_view, self.latest_result)
+                    warped_view = annotate_warped_view(warped_view, self.latest_result)
 
                     signature = tuple(tuple(row) for row in board_state)
                     if stable and signature != self.last_signature:
@@ -208,6 +208,8 @@ class VisionTuner:
             "Tuner: q quit | p save config | s save snapshot",
             f"Config: {Path(self.config_path).name}",
             f"Exposure: {self.camera_config.exposure:.0f}  BlackV: {self.piece_config.black_value_max}  WhiteMin: {self.piece_config.white_value_min}",
+            f"EmptyRed: {self.piece_config.empty_red_ratio_threshold:.2f}",
+            f"BoardNorm: {'ON' if self.board_config.use_lighting_normalization else 'OFF'}  CLAHE: {self.board_config.clahe_clip_limit:.1f}/{self.board_config.clahe_tile_grid_size}",
         ]
         if self.latest_result is not None:
             lines.append(
@@ -272,6 +274,39 @@ class VisionTuner:
                     self.board_config,
                     "smoothing_alpha",
                     min(1.0, max(0.0, value / 100.0)),
+                ),
+            ),
+            TrackbarBinding(
+                CAMERA_WINDOW,
+                "board_norm_enable",
+                1,
+                lambda: 1 if self.board_config.use_lighting_normalization else 0,
+                lambda value: setattr(
+                    self.board_config,
+                    "use_lighting_normalization",
+                    bool(value),
+                ),
+            ),
+            TrackbarBinding(
+                CAMERA_WINDOW,
+                "clahe_clip_x10",
+                80,
+                lambda: int(round(self.board_config.clahe_clip_limit * 10)),
+                lambda value: setattr(
+                    self.board_config,
+                    "clahe_clip_limit",
+                    max(0.1, value / 10.0),
+                ),
+            ),
+            TrackbarBinding(
+                CAMERA_WINDOW,
+                "clahe_tile",
+                32,
+                lambda: int(self.board_config.clahe_tile_grid_size),
+                lambda value: setattr(
+                    self.board_config,
+                    "clahe_tile_grid_size",
+                    max(1, value),
                 ),
             ),
             TrackbarBinding(
@@ -433,6 +468,17 @@ class VisionTuner:
             ),
             TrackbarBinding(
                 WHITE_WINDOW,
+                "white_norm_area_x100",
+                100,
+                lambda: int(round(self.piece_config.white_norm_min_piece_area_ratio * 100)),
+                lambda value: setattr(
+                    self.piece_config,
+                    "white_norm_min_piece_area_ratio",
+                    max(0.0, value / 100.0),
+                ),
+            ),
+            TrackbarBinding(
+                WHITE_WINDOW,
                 "white_center_min_x100",
                 100,
                 lambda: int(round(self.piece_config.white_center_ratio_min * 100)),
@@ -478,8 +524,22 @@ class VisionTuner:
                 lambda value: setattr(self.piece_config, "white_saturation_max", value),
             ),
             TrackbarBinding(
+                WHITE_WINDOW,
+                "white_norm_value_min",
+                255,
+                lambda: int(self.piece_config.white_norm_value_min),
+                lambda value: setattr(self.piece_config, "white_norm_value_min", value),
+            ),
+            TrackbarBinding(
+                WHITE_WINDOW,
+                "white_norm_sat_max",
+                255,
+                lambda: int(self.piece_config.white_norm_saturation_max),
+                lambda value: setattr(self.piece_config, "white_norm_saturation_max", value),
+            ),
+            TrackbarBinding(
                 BLACK_WINDOW,
-                "empty_red_x100",
+                "empty_red_ratio_x100",
                 100,
                 lambda: int(round(self.piece_config.empty_red_ratio_threshold * 100)),
                 lambda value: setattr(
@@ -531,6 +591,9 @@ def build_configs(args: argparse.Namespace) -> tuple[CameraConfig, BoardDetector
             "min_area_ratio": 0.08,
             "smoothing_alpha": 0.35,
             "angle_smoothing_alpha": 0.4,
+            "use_lighting_normalization": True,
+            "clahe_clip_limit": 2.5,
+            "clahe_tile_grid_size": 8,
             "theta_zero_ref_deg": 0.0,
             "red_lower_1": (0, 70, 50),
             "red_upper_1": (12, 255, 255),
@@ -547,12 +610,15 @@ def build_configs(args: argparse.Namespace) -> tuple[CameraConfig, BoardDetector
             "min_piece_area_ratio": 0.10,
             "white_min_piece_area_ratio": 0.05,
             "white_relaxed_piece_area_ratio": 0.03,
+            "white_norm_min_piece_area_ratio": 0.025,
             "white_center_ratio_min": 0.12,
             "black_value_max": 70,
             "black_saturation_min": 0,
             "black_saturation_max": 255,
             "white_value_min": 170,
             "white_saturation_max": 80,
+            "white_norm_value_min": 150,
+            "white_norm_saturation_max": 140,
             "empty_red_ratio_threshold": 0.45,
         },
         config_overrides.get("piece_detector", {}),

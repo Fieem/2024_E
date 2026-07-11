@@ -85,12 +85,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-piece-area-ratio", type=float, default=0.10)
     parser.add_argument("--white-min-piece-area-ratio", type=float, default=0.05)
     parser.add_argument("--white-relaxed-piece-area-ratio", type=float, default=0.03)
+    parser.add_argument("--white-norm-min-piece-area-ratio", type=float, default=0.025)
     parser.add_argument("--white-center-ratio-min", type=float, default=0.12)
     parser.add_argument("--black-value-max", type=int, default=70)
     parser.add_argument("--black-saturation-min", type=int, default=0)
     parser.add_argument("--black-saturation-max", type=int, default=255)
     parser.add_argument("--white-value-min", type=int, default=170)
     parser.add_argument("--white-saturation-max", type=int, default=80)
+    parser.add_argument("--white-norm-value-min", type=int, default=150)
+    parser.add_argument("--white-norm-saturation-max", type=int, default=140)
     parser.add_argument("--empty-red-ratio-threshold", type=float, default=0.45)
     return parser.parse_args()
 
@@ -192,9 +195,9 @@ def low_confidence_cells(
 def annotate_warped_view(
     warped_view,
     vision_result: VisionResult,
-) -> None:
+) -> np.ndarray | None:
     if warped_view is None:
-        return
+        return warped_view
 
     counts = summarize_cells(vision_result.cells)
     status_lines = [
@@ -207,11 +210,15 @@ def annotate_warped_view(
     if uncertain:
         status_lines.append("Low conf: " + ", ".join(uncertain[:5]))
 
-    panel_height = 20 + len(status_lines) * 22
-    cv2.rectangle(warped_view, (0, 0), (vision_result.board_image_size[0], panel_height), (20, 20, 20), -1)
+    panel_height = 14 + len(status_lines) * 22
+    panel = np.full(
+        (panel_height, vision_result.board_image_size[0], 3),
+        20,
+        dtype=np.uint8,
+    )
     for index, line in enumerate(status_lines):
         cv2.putText(
-            warped_view,
+            panel,
             line,
             (10, 18 + index * 22),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -220,6 +227,7 @@ def annotate_warped_view(
             1,
             cv2.LINE_AA,
         )
+    return np.vstack((warped_view, panel))
 
 
 def save_debug_frames(
@@ -258,12 +266,15 @@ def save_debug_frames(
             "min_piece_area_ratio": detector_config.min_piece_area_ratio,
             "white_min_piece_area_ratio": detector_config.white_min_piece_area_ratio,
             "white_relaxed_piece_area_ratio": detector_config.white_relaxed_piece_area_ratio,
+            "white_norm_min_piece_area_ratio": detector_config.white_norm_min_piece_area_ratio,
             "white_center_ratio_min": detector_config.white_center_ratio_min,
             "black_value_max": detector_config.black_value_max,
             "black_saturation_min": detector_config.black_saturation_min,
             "black_saturation_max": detector_config.black_saturation_max,
             "white_value_min": detector_config.white_value_min,
             "white_saturation_max": detector_config.white_saturation_max,
+            "white_norm_value_min": detector_config.white_norm_value_min,
+            "white_norm_saturation_max": detector_config.white_norm_saturation_max,
             "empty_red_ratio_threshold": detector_config.empty_red_ratio_threshold,
         },
         "vision_result": vision_result.to_dict() if vision_result is not None else None,
@@ -298,6 +309,9 @@ def main() -> None:
             "min_area_ratio": 0.08,
             "smoothing_alpha": 0.35,
             "angle_smoothing_alpha": 0.4,
+            "use_lighting_normalization": True,
+            "clahe_clip_limit": 2.5,
+            "clahe_tile_grid_size": 8,
             "theta_zero_ref_deg": args.theta_zero_ref_deg,
             "red_lower_1": (0, 70, 50),
             "red_upper_1": (12, 255, 255),
@@ -314,12 +328,15 @@ def main() -> None:
             "min_piece_area_ratio": args.min_piece_area_ratio,
             "white_min_piece_area_ratio": args.white_min_piece_area_ratio,
             "white_relaxed_piece_area_ratio": args.white_relaxed_piece_area_ratio,
+            "white_norm_min_piece_area_ratio": args.white_norm_min_piece_area_ratio,
             "white_center_ratio_min": args.white_center_ratio_min,
             "black_value_max": args.black_value_max,
             "black_saturation_min": args.black_saturation_min,
             "black_saturation_max": args.black_saturation_max,
             "white_value_min": args.white_value_min,
             "white_saturation_max": args.white_saturation_max,
+            "white_norm_value_min": args.white_norm_value_min,
+            "white_norm_saturation_max": args.white_norm_saturation_max,
             "empty_red_ratio_threshold": args.empty_red_ratio_threshold,
         },
         config_overrides.get("piece_detector", {}),
@@ -372,7 +389,7 @@ def main() -> None:
                     theta_deg=detection.angle_deg,
                 )
                 latest_result = vision_result
-                annotate_warped_view(warped_view, vision_result)
+                warped_view = annotate_warped_view(warped_view, vision_result)
 
                 signature = tuple(tuple(row) for row in board_state)
                 if stable and signature != last_signature:

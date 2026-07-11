@@ -98,6 +98,9 @@ class GridModel:
             cell_result = cell_results.get(cell.id)
             state = cell_result.state if cell_result else "empty"
             color = self._state_color(state)
+            diagnostics = cell_result.diagnostics if cell_result else {}
+            has_piece = bool(diagnostics.get("has_piece", state != "empty"))
+            red_ratio = diagnostics.get("red_ratio")
 
             cv2.circle(
                 annotated,
@@ -106,6 +109,14 @@ class GridModel:
                 color,
                 2,
             )
+            if has_piece:
+                cv2.circle(
+                    annotated,
+                    cell.center_px,
+                    max(3, self.config.center_marker_radius // 3),
+                    color,
+                    -1,
+                )
             cv2.putText(
                 annotated,
                 f"{cell.row},{cell.col}",
@@ -120,10 +131,21 @@ class GridModel:
                 cv2.putText(
                     annotated,
                     f"{state[0].upper()} {cell_result.confidence:.2f}",
-                    (x1 + 2, y2 - 6),
+                    (x1 + 2, y2 - 18),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.35,
                     color,
+                    1,
+                    cv2.LINE_AA,
+                )
+                red_ratio_text = "--" if red_ratio is None else f"{float(red_ratio):.2f}"
+                cv2.putText(
+                    annotated,
+                    f"P{1 if has_piece else 0} R{red_ratio_text}",
+                    (x1 + 2, y2 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.32,
+                    (220, 220, 220),
                     1,
                     cv2.LINE_AA,
                 )

@@ -15,6 +15,9 @@ class BoardDetectorConfig:
     min_area_ratio: float = 0.08
     smoothing_alpha: float = 0.35
     angle_smoothing_alpha: float = 0.4
+    use_lighting_normalization: bool = True
+    clahe_clip_limit: float = 2.5
+    clahe_tile_grid_size: int = 8
     theta_zero_ref_deg: float = 0.0
     red_lower_1: tuple[int, int, int] = (0, 70, 50)
     red_upper_1: tuple[int, int, int] = (12, 255, 255)
@@ -36,6 +39,23 @@ def create_red_mask(
     return cv2.bitwise_or(mask_1, mask_2)
 
 
+def normalize_board_lighting(
+    image_bgr: np.ndarray,
+    clip_limit: float = 2.5,
+    tile_grid_size: int = 8,
+) -> np.ndarray:
+    grid_size = max(1, int(tile_grid_size))
+    clahe = cv2.createCLAHE(
+        clipLimit=max(0.1, float(clip_limit)),
+        tileGridSize=(grid_size, grid_size),
+    )
+    lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
+    lightness, channel_a, channel_b = cv2.split(lab)
+    normalized_lightness = clahe.apply(lightness)
+    normalized_lab = cv2.merge((normalized_lightness, channel_a, channel_b))
+    return cv2.cvtColor(normalized_lab, cv2.COLOR_LAB2BGR)
+
+
 class BoardDetector:
     def __init__(self, config: BoardDetectorConfig) -> None:
         self.config = config
@@ -43,8 +63,16 @@ class BoardDetector:
         self._smoothed_angle_deg: float | None = None
 
     def detect(self, frame: np.ndarray) -> BoardDetectionResult:
+        board_frame = frame
+        if self.config.use_lighting_normalization:
+            board_frame = normalize_board_lighting(
+                frame,
+                clip_limit=self.config.clahe_clip_limit,
+                tile_grid_size=self.config.clahe_tile_grid_size,
+            )
+
         raw_mask = create_red_mask(
-            frame,
+            board_frame,
             self.config.red_lower_1,
             self.config.red_upper_1,
             self.config.red_lower_2,
