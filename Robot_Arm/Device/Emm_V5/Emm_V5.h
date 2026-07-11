@@ -2,6 +2,7 @@
 #define __EMM_V5_H
 
 #include "can.h"
+#include "Public/public.h"
 
 /**********************************************************
 ***	Emm_V5.0步进闭环控制例程
