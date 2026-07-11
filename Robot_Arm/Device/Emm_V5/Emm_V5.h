@@ -216,4 +216,10 @@ void Emm_V5_MMCL_Read_Sys_Params(uint8_t addr, SysParams_t s);
 **********************************************************/
 extern int32_t Emm_V5_Get_Pulse(uint8_t addr);
 extern uint32_t Emm_V5_Get_Position(uint8_t addr);
+extern int32_t Emm_V5_Get_PosError(uint8_t addr);
+
+void Is_Arrived();
+void Move_Pos(int32_t x, int32_t y);
+void Get_Chess(int32_t x, int32_t y);
+void Put_Chess(int32_t x, int32_t y);
 #endif

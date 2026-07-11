@@ -80,7 +80,7 @@ osThreadId_t Sg90TaskHandle;
 const osThreadAttr_t Sg90Task_attributes = {
   .name = "Sg90Task",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -139,6 +139,10 @@ void MX_FREERTOS_Init(void) {
   Sg90TaskHandle = osThreadNew(StartSg90Task, NULL, &Sg90Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
+  //vTaskSuspend(defaultTaskHandle);  // Suspend the default task to prevent it from running
+  //vTaskSuspend(ReceiveTaskHandle);  // Suspend the Receive task to prevent it from running
+  //vTaskSuspend(MotorTaskHandle);    // Suspend the Motor task to prevent it from running
+  //vTaskSuspend(ScreenTaskHandle);   // Suspend the Screen task to prevent it from running
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 

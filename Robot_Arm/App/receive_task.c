@@ -3,6 +3,7 @@
 #include <stm32f4xx_hal_uart.h>
 #include "Communicate/communicate.h"
 #include "Test/test.h"
+#include "cmsis_os2.h"
 //
 // Created by Administrator on 2026/7/8.
 //
@@ -10,6 +11,7 @@ void StartReceiveTask(void *argument) {
     comm_init();                //启动 USART1 单字节中断接收
     VisionData_t data;
     for (;;) {
+        osDelay(10);
         if (comm_get_vision_data(&data)) {
 
         }

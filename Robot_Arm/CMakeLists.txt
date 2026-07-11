@@ -43,8 +43,10 @@ add_executable(${CMAKE_PROJECT_NAME}
         Device/Test/test.h
         Device/SG90/sg90.c
         Device/SG90/sg90.h
-        App/sg90_task.c)
-
+        App/sg90_task.c
+        Device/Public/public.c
+        Device/Public/public.h)
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
@@ -63,6 +65,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         Device/Test/test.c
         Device/Communicate/communicate.c
         Device/SG90/sg90.c
+        Device/Public/public.c
 )
 
 # Add include paths

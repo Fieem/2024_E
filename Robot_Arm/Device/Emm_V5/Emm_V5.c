@@ -1,5 +1,8 @@
 #include "Emm_V5.h"
-
+#include <math.h>
+#include <stdlib.h>
+#include "Public/public.h"
+#include "SG90/sg90.h"
 /**********************************************************
 ***	Emm_V5.0步进闭环控制例程
 ***	编写作者：ZHANGDATOU
@@ -1639,4 +1642,83 @@ uint32_t Emm_V5_Get_Position(uint8_t addr)
   }
 
   return 0xFFFFFFFF;                               // 超时
+}
+
+/**
+    * @brief  读取电机位置误差（S_PERR, 0x37），阻塞等待应答
+    * @param  addr  电机ID
+    * @return 位置误差值（脉冲数），超时返回 -1
+    */
+  int32_t Emm_V5_Get_PosError(uint8_t addr)
+  {
+      uint32_t timeout = 10000;
+
+      can.rxFrameFlag = 0;
+      Emm_V5_Read_Sys_Params(addr, S_PERR);   // 请求读取 S_PERR(0x37)
+
+      while (--timeout) {
+          if (can.rxFrameFlag) {
+              can.rxFrameFlag = 0;
+
+              uint8_t rx_addr = (uint8_t)(can.CAN_RxMsg.ExtId >> 8);
+            if (rx_addr != addr) continue;
+              if (can.rxData[0] != 0x37) continue;   // 功能码必须为 0x37
+
+              // 解析：rxData[1]=符号, rxData[2..5]=误差绝对值(大端)
+              uint32_t err = ((uint32_t)can.rxData[2] << 24)
+                           | ((uint32_t)can.rxData[3] << 16)
+                           | ((uint32_t)can.rxData[4] << 8)
+                           |  (uint32_t)can.rxData[5];
+              return (can.rxData[1] == 0) ? (int32_t)err : -(int32_t)err;
+          }
+          HAL_Delay(1);
+      }
+      return -1;  // 超时
+  }
+
+void Is_Arrived() {
+  int8_t err_yaw = (int8_t)Emm_V5_Get_PosError(1);
+  int8_t err_pitch = (int8_t)Emm_V5_Get_PosError(2);
+  if (abs(err_yaw) < 1 && abs(err_pitch) < 1) {
+    arrive_flag = true;
+  }
+}
+
+void Move_Pos(int32_t x, int32_t y) {
+  uint8_t dir_yaw   = (x >= 0)   ? 0 : 1;
+  uint8_t dir_pitch = (y >= 0)   ? 0 : 1;
+
+  uint32_t target_yaw   = abs(x);
+  uint32_t target_pitch = abs(y);
+
+  uint32_t max_delta = abs(x - last_pos_yaw) + abs(y - last_pos_pitch);
+  uint16_t base_speed = 50000;  // 满速
+  uint8_t base_acc = 10;
+
+  uint16_t vel_yaw   = (uint16_t)((uint64_t)base_speed * abs(x - last_pos_yaw) / max_delta)/1000;
+  uint16_t vel_pitch = (uint16_t)((uint64_t)base_speed * abs(y - last_pos_pitch) / max_delta)/1000;
+
+  Emm_V5_MMCL_Pos_Control(1, dir_yaw,   vel_yaw,   0, target_yaw,   true, true);
+  Emm_V5_MMCL_Pos_Control(2, dir_pitch, vel_pitch, 0, target_pitch, true, true);
+  // Emm_V5_MMCL_Pos_Control(1, dir_yaw,   200, 100, x, true, false);
+  // Emm_V5_MMCL_Pos_Control(2, dir_pitch, 200, 100, y, true, false);
+  Emm_V5_Multi_Motor_Cmd(0);   // 广播触发，两个电机同时开始
+  last_pos_yaw    = x;
+  last_pos_pitch  = y;
+}
+
+void Get_Chess(int32_t x, int32_t y) {
+  Move_Pos(x, y);
+  if (arrive_flag) {
+    Magnet_ON();
+    arrive_flag = false;
+  }
+}
+
+void Put_Chess(int32_t x, int32_t y) {
+  Move_Pos(x, y);
+  if (arrive_flag) {
+    Magnet_OFF();
+    arrive_flag = false;
+  }
 }
