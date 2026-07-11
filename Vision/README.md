@@ -51,10 +51,10 @@ python main.py
 python tuner.py
 ```
 
-如果你习惯用这个名字启动，也可以：
+如果你要运行串口联动控制层：
 
 ```bash
-python turned.py
+python control_main.py --headless
 ```
 
 常用参数：
@@ -65,6 +65,11 @@ python turned.py
 - 帧率：`60 FPS`
 - 输出格式：`MJPG / MJPEG`
 - 曝光：默认手动曝光 `180.0`，用于把偏暗画面提亮
+
+控制层额外需要：
+
+- `vision_control_settings.json`
+- `pyserial`
 
 常用启动方式：
 
@@ -216,6 +221,88 @@ python main.py
 ```
 
 就会自动带上你保存的参数。
+
+## 串口控制层
+
+`control_main.py` 会把视觉识别、串口协议、`gomoku_ai` 和脉冲查表拼起来，但仍然不依赖 `Robot_Arm` 目录。
+
+它使用两个配置文件：
+
+- `vision_settings.json`
+  - 相机、红板检测、棋子识别参数
+- `vision_control_settings.json`
+  - 串口端口、AI 难度、棋盘倾斜补偿、14 个取子位脉冲、49 个棋盘格脉冲
+  - 默认串口示例：`/dev/ttyAMA0`，`921600`
+
+启动方式：
+
+```bash
+python control_main.py --vision-config vision_settings.json --control-config vision_control_settings.json --headless
+```
+
+如果你希望保留调试窗口，可以去掉 `--headless`。
+
+串口请求报文：
+
+- `PLACE,<color>,<row>,<col>`
+- `BATTLE_START,<color>`
+- `READY`
+
+串口响应报文：
+
+- `PULSES,<pick_p1>,<pick_p2>,<place_p1>,<place_p2>`
+- `MOVE,<row>,<col>,<pick_p1>,<pick_p2>,<place_p1>,<place_p2>`
+- `ERROR,<code>,<message>`
+- `BUSY,<message>`
+
+颜色固定为：
+
+- `BLACK`
+- `WHITE`
+
+错误码固定为：
+
+- `NO_BOARD`
+- `BAD_CMD`
+- `BAD_COLOR`
+- `BAD_POS`
+- `NO_SLOT`
+- `AI_TURN_MISMATCH`
+- `ILLEGAL_BOARD`
+- `AI_FAIL`
+
+控制逻辑固定为：
+
+- `PLACE`：检查当前稳定棋盘、目标格和槽位，然后返回 4 个脉冲
+  - 会读取视觉当前的 `theta_deg`
+  - 只对“落子位”这 2 个脉冲做倾斜补偿
+  - `|theta_deg| <= 3°` 时按 `0°` 处理
+- `BATTLE_START`：记录机械臂执棋颜色，进入对弈模式
+- `READY`：读取当前稳定整盘状态，若轮到机械臂，则调用 `gomoku_ai` 的 `hard` 难度求下一步，再返回位置和 4 个脉冲
+
+脉冲配置规则：
+
+- `black_slots[7]` / `white_slots[7]`
+  - 每项是一个 `[pulse1, pulse2]`
+- `board_cells[7][7]`
+  - 每格是一个 `[pulse1, pulse2]`
+- 第 `n` 个该颜色棋子默认使用对应颜色的第 `n` 个取子槽位
+
+倾斜补偿配置：
+
+- `tilt_compensation.enabled`
+  - `true`：开启 PLACE 模式下的落子倾斜补偿
+  - `false`：PLACE 模式直接使用基准格脉冲
+- `tilt_compensation.dead_zone_deg`
+  - 死区角度，默认 `3.0`
+  - 当视觉输出角度在 `-3° ~ +3°` 内时，按 `0°` 处理
+
+当前补偿方式：
+
+- 仍然只使用 `board_cells[7][7]` 这张脉冲表
+- 不引入 `Robot_Arm` 目录和逆运动学
+- 会把目标格按当前 `theta_deg` 在棋盘索引平面内做旋转，再对脉冲表做双线性插值
+- 取子槽位 `black_slots / white_slots` 不参与旋转补偿
 
 ## 调试方式
 

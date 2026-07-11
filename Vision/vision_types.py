@@ -4,6 +4,9 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 CellState = Literal["empty", "black", "white"]
+ModeKind = Literal["place", "battle_start", "ready"]
+ResponseKind = Literal["pulses", "move", "error", "busy"]
+RobotColor = Literal["BLACK", "WHITE"]
 
 
 @dataclass(frozen=True)
@@ -86,3 +89,50 @@ class VisionResult:
             "stable_frames": self.stable_frames,
             "theta_deg": self.theta_deg,
         }
+
+
+@dataclass(frozen=True)
+class VisionStableSnapshot:
+    board_found: bool
+    stable: bool
+    board_state: list[list[CellState]]
+    theta_deg: float | None
+    timestamp: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class PulseConfig:
+    black_slots: list[tuple[int, int]]
+    white_slots: list[tuple[int, int]]
+    board_cells: list[list[tuple[int, int]]]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "black_slots": [list(item) for item in self.black_slots],
+            "white_slots": [list(item) for item in self.white_slots],
+            "board_cells": [[list(pulse) for pulse in row] for row in self.board_cells],
+        }
+
+
+@dataclass(frozen=True)
+class ModeRequest:
+    kind: ModeKind
+    color: RobotColor | None = None
+    row: int | None = None
+    col: int | None = None
+
+
+@dataclass(frozen=True)
+class ModeResponse:
+    kind: ResponseKind
+    row: int | None = None
+    col: int | None = None
+    pulses4: tuple[int, int, int, int] | None = None
+    error_code: str | None = None
+    message: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
