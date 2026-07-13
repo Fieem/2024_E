@@ -156,19 +156,41 @@ static int test_vofa_apply_kv(const char *key, float value) {
         printsf(0,"TEST");
         return 1;
     }
-    if (test_key_equal(key, "PLACETEST")) {
-        comm_send_place('W', 1, 2);
-        printsf(0,"PLACETEST sent");
+
+    /* ---- 树莓派协议调试：变量预设 + 触发发送 ---- */
+    /* 静态变量，保存屏幕设定的参数 */
+    static char    s_cmd_color = 'W';
+    static uint8_t s_cmd_row   = 1;
+    static uint8_t s_cmd_col   = 1;
+
+    if (test_key_equal(key, "COLOR")) {
+        s_cmd_color = ((int)value == 0) ? 'B' : 'W';
+        printsf(0, "COLOR=%c", s_cmd_color);
         return 1;
     }
-    if (test_key_equal(key, "BATTLETEST")) {
-        comm_send_battle_start('W');
-        printsf(0,"BATTLETEST sent");
+    if (test_key_equal(key, "POSR")) {
+        s_cmd_row = (uint8_t)value;
+        printsf(0, "POSR=%u", s_cmd_row);
         return 1;
     }
-    if (test_key_equal(key, "READYTEST")) {
+    if (test_key_equal(key, "POSC")) {
+        s_cmd_col = (uint8_t)value;
+        printsf(0, "POSC=%u", s_cmd_col);
+        return 1;
+    }
+    if (test_key_equal(key, "PLACE")) {
+        comm_send_place(s_cmd_color, s_cmd_row, s_cmd_col);
+        printsf(0, "PLACE %c,%u,%u", s_cmd_color, s_cmd_row, s_cmd_col);
+        return 1;
+    }
+    if (test_key_equal(key, "BATTLE")) {
+        comm_send_battle_start(s_cmd_color);
+        printsf(0, "BATTLE %c", s_cmd_color);
+        return 1;
+    }
+    if (test_key_equal(key, "READY")) {
         comm_send_ready();
-        printsf(0,"READYTEST sent");
+        printsf(0,"READY sent");
         return 1;
     }
     /*
