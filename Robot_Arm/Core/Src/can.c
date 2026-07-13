@@ -195,8 +195,18 @@ void can_SendCmd(__IO uint8_t *cmd, uint8_t len)
       for(l=0; l < 7; l++,i++) { can.txData[l + 1] = cmd[i + 2]; } can.CAN_TxMsg.DLC = 8;
     }
 
-    // 发送数据
-    while(HAL_CAN_AddTxMessage((&hcan1), (CAN_TxHeaderTypeDef *)(&can.CAN_TxMsg), (uint8_t *)(&can.txData), (&TxMailbox)) != HAL_OK);
+    // 发送数据（带超时，避免 CAN 总线异常时死等阻塞任务）
+    {
+      uint32_t tx_timeout = 5000;
+      while (HAL_CAN_AddTxMessage((&hcan1), (CAN_TxHeaderTypeDef *)(&can.CAN_TxMsg),
+                                  (uint8_t *)(&can.txData), (&TxMailbox)) != HAL_OK)
+      {
+        if (--tx_timeout == 0) {
+          HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_9);
+          return;
+        }   /* 超时放弃，避免死等 */
+      }
+    }
 
     // 记录发送的第几包的数据
     ++packNum;

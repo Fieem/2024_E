@@ -2,6 +2,7 @@
 #define __EMM_V5_H
 
 #include "can.h"
+#include "Public/public.h"
 
 /**********************************************************
 ***	Emm_V5.0步进闭环控制例程
@@ -220,6 +221,5 @@ extern int32_t Emm_V5_Get_PosError(uint8_t addr);
 
 void Is_Arrived();
 void Move_Pos(int32_t x, int32_t y);
-void Get_Chess(int32_t x, int32_t y);
-void Put_Chess(int32_t x, int32_t y);
+void Arm_Execute_Pick_Place(int32_t pick_x, int32_t pick_y, int32_t place_x, int32_t place_y);
 #endif

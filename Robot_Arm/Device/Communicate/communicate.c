@@ -1,167 +1,169 @@
 //
-// Created by Administrator on 2026/6/4.
-// 视觉模块通信 - 接收与解析
+// Created by Administrator on 2026/7/13.
+// 树莓派通信 - 文本协议解析与收发
+// 协议: 逗号分隔，单行一条消息，\n 结尾
 //
 
 #include "communicate.h"
+#include "Public/public.h"
+#include "Test/test.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
-VisionData_t vision_data = {0};
+/* ============================================================
+ *  环形缓冲区（ISR 安全，单生产者单消费者）
+ * ============================================================ */
+static uint8_t           s_comm_rx_ring[COMM_RX_RING_SIZE];
+static volatile uint16_t s_comm_rx_head = 0U;   /* ISR 写入 */
+static uint16_t          s_comm_rx_tail = 0U;   /* 任务读取 */
 
-/* 解析状态机 */
-typedef enum {
-    STATE_HEADER1 = 0,      // 等待帧头 0x55
-    STATE_HEADER2,          // 等待帧头 0xAA
-    STATE_DATA,             // 接收 16 字节浮点数据
-    STATE_CHECKSUM,         // 接收 4 字节校验和
-    STATE_TAIL,             // 等待帧尾 0x0D
-} ParseState_t;
-
-static ParseState_t parse_state = STATE_HEADER1;
-
-/* 接收缓存 */
-static uint8_t  data_buf[8];            // 2个float的原始字节
-static uint8_t  data_idx;               // 数据字节计数
-static uint32_t received_checksum;      // 收到的校验和
-static uint8_t  checksum_byte_idx;      // 校验和字节计数
-
-//-------------------------------------------------------------------------------------------------------------------
-// 函数简介     计算校验和（对 data 区 16 字节做累加）
-//-------------------------------------------------------------------------------------------------------------------
-static uint32_t calc_checksum(const uint8_t *data, uint8_t len)
+/* ---- ISR 安全 push ---- */
+void comm_pi_ring_push(uint8_t byte)
 {
-    uint32_t sum = 0;
-    for (uint8_t i = 0; i < len; i++) {
-        sum += data[i];
+    uint16_t next = (uint16_t)(s_comm_rx_head + 1U) % COMM_RX_RING_SIZE;
+    if (next != s_comm_rx_tail) {
+        s_comm_rx_ring[s_comm_rx_head] = byte;
+        s_comm_rx_head = next;
     }
-    return sum;
+    /* 缓冲区满 → 丢弃该字节 */
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-// 函数简介     喂一个字节给解析状态机，在 UART RX 回调里调用
-//-------------------------------------------------------------------------------------------------------------------
-void comm_parse_byte(uint8_t byte)
+/* ---- 任务侧 pop，返回 0=空，1=取出 ---- */
+static int comm_pi_ring_pop(uint8_t *out)
 {
-    switch (parse_state) {
+    if (s_comm_rx_tail == s_comm_rx_head) {
+        return 0;
+    }
+    *out = s_comm_rx_ring[s_comm_rx_tail];
+    s_comm_rx_tail = (uint16_t)(s_comm_rx_tail + 1U) % COMM_RX_RING_SIZE;
+    return 1;
+}
 
-        //--- 等待帧头 0x55 ---
-        case STATE_HEADER1:
-            if (byte == COMM_HEADER1) {
-                parse_state = STATE_HEADER2;
-            }
-            // 不是 0x55 就留在当前状态，丢弃该字节
-            break;
+/* ============================================================
+ *  行累积与解析
+ * ============================================================ */
+static char    s_comm_frame_buf[COMM_FRAME_MAX_LEN];
+static uint8_t s_comm_frame_len = 0U;
 
-        //--- 等待帧头 0xAA ---
-        case STATE_HEADER2:
-            if (byte == COMM_HEADER2) {
-                parse_state = STATE_DATA;
-                data_idx = 0;
-            } else {
-                // 不是 0xAA，退回找下一个 0x55
-                parse_state = STATE_HEADER1;
-                if (byte == COMM_HEADER1) {
-                    parse_state = STATE_HEADER2;
-                }
-            }
-            break;
+/* ---- 忽略大小写字符串比较（仅全大写 ASCII 命令） ---- */
+static int strcmp_upper(const char *a, const char *b_upper)
+{
+    while (*a && *b_upper) {
+        char ca = *a;
+        if (ca >= 'a' && ca <= 'z') ca -= 32;   /* 转大写 */
+        if (ca != *b_upper) return 1;
+        a++; b_upper++;
+    }
+    return (*a == '\0' && *b_upper == '\0') ? 0 : 1;
+}
 
-        //--- 接收 16 字节数据 ---
-        case STATE_DATA:
-            data_buf[data_idx++] = byte;
-            if (data_idx >= 8) {
-                parse_state = STATE_CHECKSUM;
-                checksum_byte_idx = 0;
-                received_checksum = 0;
-            }
-            break;
+/* ---- 解析一条完整的 \n 终止行 ---- */
+static void comm_pi_parse_line(const char *line)
+{
+    char work[COMM_FRAME_MAX_LEN];
+    strncpy(work, line, sizeof(work) - 1);
+    work[sizeof(work) - 1] = '\0';
 
-        //--- 接收 4 字节校验和（小端序） ---
-        case STATE_CHECKSUM:
-            received_checksum |= ((uint32_t)byte << (checksum_byte_idx * 8));
-            checksum_byte_idx++;
-            if (checksum_byte_idx >= 4) {
-                parse_state = STATE_TAIL;
-            }
-            break;
+    char *cmd = strtok(work, ",");
+    if (cmd == NULL) return;
 
-        //--- 等待帧尾 0x0D ---
-        case STATE_TAIL:
-            if (byte == COMM_TAIL) {
-                // 校验和验证
-                uint32_t computed = calc_checksum(data_buf, 8);
-                if (computed == received_checksum) {
-                    // 校验通过，解析 float
-                    float *floats = (float *)data_buf;
-                    vision_data.yaw_error   = floats[0];
-                    vision_data.pitch_error = floats[1];
-                    vision_data.new_data    = true;
-                }
-                // 校验失败则丢弃这一帧
-            }
-            // 无论校验成功与否，都回到找帧头状态
-            parse_state = STATE_HEADER1;
-            break;
+    if (strcmp_upper(cmd, "PULSES") == 0) {
+        /* PULSES,<pick_p1>,<pick_p2>,<place_p1>,<place_p2> */
+        char *a1 = strtok(NULL, ",");
+        char *a2 = strtok(NULL, ",");
+        char *a3 = strtok(NULL, ",");
+        char *a4 = strtok(NULL, ",");
+        if (a1 && a2 && a3 && a4) {
+            comm_pick_p1  = atoi(a1);
+            comm_pick_p2  = atoi(a2);
+            comm_place_p1 = atoi(a3);
+            comm_place_p2 = atoi(a4);
+            comm_response_ready = true;
+        }
+    }
+    else if (strcmp_upper(cmd, "ERROR") == 0) {
+        /* ERROR,<code>,<message> */
+        char *code = strtok(NULL, ",");
+        char *msg  = strtok(NULL, ",");
+        printsf(0, "ERR %s: %s", code ? code : "?", msg ? msg : "");
+        comm_response_ready = false;
+    }
+    else if (strcmp_upper(cmd, "BUSY") == 0) {
+        /* BUSY,<message> */
+        char *msg = strtok(NULL, ",");
+        printsf(0, "BUSY: %s", msg ? msg : "");
+        comm_response_ready = false;
+    }
+    /* 未知命令 → 静默忽略 */
+}
 
-        default:
-            parse_state = STATE_HEADER1;
-            break;
+/* ---- 逐字节喂入，遇 \n 自动解析 ---- */
+static void comm_pi_feed_byte(uint8_t byte)
+{
+    if (byte == '\r') {
+        return;   /* 忽略 CR，只等 LF */
+    }
+    if (byte == '\n') {
+        /* 行结束 → 解析 */
+        s_comm_frame_buf[s_comm_frame_len] = '\0';
+        if (s_comm_frame_len > 0) {
+            comm_pi_parse_line(s_comm_frame_buf);
+        }
+        s_comm_frame_len = 0;
+        return;
+    }
+    /* 普通字符 → 追加到行缓冲 */
+    if (s_comm_frame_len < (COMM_FRAME_MAX_LEN - 1)) {
+        s_comm_frame_buf[s_comm_frame_len++] = (char)byte;
+    } else {
+        /* 行溢出 → 丢弃整行 */
+        s_comm_frame_len = 0;
     }
 }
 
-/* 单字节接收缓冲区（地址需稳定，HAL 保存其指针） */
-uint8_t comm_rx_byte;
+/* ============================================================
+ *  对外接口
+ * ============================================================ */
 
-//-------------------------------------------------------------------------------------------------------------------
-// 函数简介     初始化通信，启动 USART1 单字节中断接收
-//-------------------------------------------------------------------------------------------------------------------
-void comm_init(void)
+uint8_t comm_rx_byte;   /* HAL_UART_Receive_IT 单字节缓冲 */
+
+void comm_pi_init(void)
 {
-    // USART1 已在 MX_USART1_UART_Init() 中初始化
-    // 启动单字节中断接收（回调在 test.c 的 HAL_UART_RxCpltCallback 中统一处理）
+    s_comm_frame_len = 0;
+    memset(s_comm_frame_buf, 0, sizeof(s_comm_frame_buf));
+    s_comm_rx_head = 0;
+    s_comm_rx_tail = 0;
     HAL_UART_Receive_IT(&huart1, &comm_rx_byte, 1);
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-// 函数简介     获取视觉数据（用户读取后自动清除 new_data 标志）
-//-------------------------------------------------------------------------------------------------------------------
-bool comm_get_vision_data(VisionData_t *out)
+void comm_pi_poll(void)
 {
-    if (!vision_data.new_data) return false;
-    memcpy(out, &vision_data, sizeof(VisionData_t));
-    vision_data.new_data = false;
-    return true;
+    uint8_t ch;
+    while (comm_pi_ring_pop(&ch)) {
+        comm_pi_feed_byte(ch);
+    }
 }
 
-// 发送应答包给 K230: 0x55 0xAA | uint8 status | uint32 checksum | 0x0D
-void comm_send_ack(uint8_t status)
+/* -----------------------------------------------------------
+ *  发送请求给树莓派
+ * ----------------------------------------------------------- */
+void comm_send_place(char color, uint8_t row, uint8_t col)
 {
-    uint8_t buf[8];
-
-    buf[0] = COMM_HEADER1;   // 0x55
-    buf[1] = COMM_HEADER2;   // 0xAA
-    buf[2] = status;         // 数据: 1=完成, 0=失败 2=收到 3=K230开始 4=K230停止发送数据
-
-    // 校验和对 data 区累加
-    uint32_t sum = calc_checksum(&buf[2], 1);
-    buf[3] = (uint8_t)(sum >> 0);
-    buf[4] = (uint8_t)(sum >> 8);
-    buf[5] = (uint8_t)(sum >> 16);
-    buf[6] = (uint8_t)(sum >> 24);
-
-    buf[7] = COMM_TAIL;      // 0x0D
-
-    HAL_UART_Transmit(&huart1, buf, 8, 100);
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf), "PLACE,%c,%u,%u\n", color, row, col);
+    HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)len, 100);
 }
 
-  void comm_flush_rx(void)
-  {
-      parse_state        = STATE_HEADER1;
-      data_idx           = 0;
-      checksum_byte_idx  = 0;
-      received_checksum  = 0;
-      memset(data_buf, 0, sizeof(data_buf));
+void comm_send_battle_start(char color)
+{
+    char buf[24];
+    int len = snprintf(buf, sizeof(buf), "BATTLE_START,%c\n", color);
+    HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)len, 100);
+}
 
-      // 重新启动 UART 中断接收（这也会把 HAL 内部锁定的状态清掉）
-      HAL_UART_AbortReceive_IT(&huart1);   // 先中止当前接收
-      HAL_UART_Receive_IT(&huart1, &comm_rx_byte, 1);  // 重新启动
-  }
+void comm_send_ready(void)
+{
+    const char *msg = "READY\n";
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, 6, 100);
+}

@@ -21,6 +21,7 @@
 void SG90_Init(void)
 {
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
+    SG90_SetAngle(High_Angle);
 }
 
 /**
@@ -47,21 +48,21 @@ void SG90_SetAngle(uint8_t angle)
   **********************************************************/
 
   /**
-    * @brief  电磁铁吸合（PA5 输出低电平）
+    * @brief  电磁铁释放（PA5 输出低电平）
     * @param  无
     * @retval 无
     */
-  void Magnet_ON(void)
+  void Magnet_OFF(void)
   {
       HAL_GPIO_WritePin(Magnet_GPIO_Port, Magnet_Pin, GPIO_PIN_RESET);
   }
 
   /**
-    * @brief  电磁铁释放（PA5 输出高电平）
+    * @brief  电磁铁吸合（PA5 输出高电平）
     * @param  无
     * @retval 无
     */
-void Magnet_OFF(void)
+void Magnet_ON(void)
 {
     HAL_GPIO_WritePin(Magnet_GPIO_Port, Magnet_Pin, GPIO_PIN_SET);
 }

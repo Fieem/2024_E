@@ -1,4 +1,5 @@
 #include "Emm_V5.h"
+#include "Public/public.h"
 #include <math.h>
 #include <stdlib.h>
 #include "Public/public.h"
@@ -1651,7 +1652,7 @@ uint32_t Emm_V5_Get_Position(uint8_t addr)
     */
   int32_t Emm_V5_Get_PosError(uint8_t addr)
   {
-      uint32_t timeout = 10000;
+      uint32_t timeout = 5;   /* 非阻塞：CAN 1Mbps 应答 < 1ms，5ms 足够 */
 
       can.rxFrameFlag = 0;
       Emm_V5_Read_Sys_Params(addr, S_PERR);   // 请求读取 S_PERR(0x37)
@@ -1673,52 +1674,78 @@ uint32_t Emm_V5_Get_Position(uint8_t addr)
           }
           HAL_Delay(1);
       }
-      return -1;  // 超时
+      return -1;  // 超时：CAN 无应答，认为未到位
   }
 
-void Is_Arrived() {
-  int8_t err_yaw = (int8_t)Emm_V5_Get_PosError(1);
-  int8_t err_pitch = (int8_t)Emm_V5_Get_PosError(2);
-  if (abs(err_yaw) < 1 && abs(err_pitch) < 1) {
-    arrive_flag = true;
-  }
+/**
+  * @brief  非阻塞到位判断（单次调用耗时 < 10ms）
+  * @note   在 MotorTask 的每个循环中调用一次。
+  *         查询两个电机的 S_PERR，误差都 < 1 脉冲时置 arrive_flag。
+  *         CAN 无应答则静默跳过，下一次循环重试。
+  */
+void Is_Arrived(void)
+{
+    int8_t err_yaw   = (int8_t)Emm_V5_Get_PosError(1);
+    int8_t err_pitch = (int8_t)Emm_V5_Get_PosError(2);
+    if (abs(err_yaw) < 1 && abs(err_pitch) < 1) {
+        arrive_flag = true;
+    }
 }
 
-void Move_Pos(int32_t x, int32_t y) {
-  uint8_t dir_yaw   = (x >= 0)   ? 0 : 1;
-  uint8_t dir_pitch = (y >= 0)   ? 0 : 1;
+/**
+  * @brief  两轴同步绝对位置移动（多电机同步指令）
+  * @param  x  yaw  轴目标位置（带符号脉冲数，绝对模式）
+  * @param  y  pitch 轴目标位置（带符号脉冲数，绝对模式）
+  * @note   速度按两轴行程比例分配，使两轴基本同时到达。
+  *         发送 CAN 指令后立即返回，不等待到位。
+  */
+void Move_Pos(int32_t x, int32_t y)
+{
+    uint8_t  dir_yaw   = (x >= 0) ? 0 : 1;
+    uint8_t  dir_pitch = (y >= 0) ? 0 : 1;
 
-  uint32_t target_yaw   = abs(x);
-  uint32_t target_pitch = abs(y);
+    uint32_t target_yaw   = (uint32_t)abs(x);
+    uint32_t target_pitch = (uint32_t)abs(y);
 
-  uint32_t max_delta = abs(x - last_pos_yaw) + abs(y - last_pos_pitch);
-  uint16_t base_speed = 50000;  // 满速
-  uint8_t base_acc = 10;
+    /* ---- 按行程比例分配速度，使两轴基本同时到达 ---- */
+    uint32_t max_delta   = (abs(x - last_pos_yaw) + abs(y - last_pos_pitch));
+    uint16_t base_speed  = 500U;    /* 合成速度上限（RPM），按需调整 */
+    uint8_t  base_acc    = 10U;
 
-  uint16_t vel_yaw   = (uint16_t)((uint64_t)base_speed * abs(x - last_pos_yaw) / max_delta)/1000;
-  uint16_t vel_pitch = (uint16_t)((uint64_t)base_speed * abs(y - last_pos_pitch) / max_delta)/1000;
+    uint16_t vel_yaw   = 200U;      /* 默认值 */
+    uint16_t vel_pitch = 200U;
 
-  Emm_V5_MMCL_Pos_Control(1, dir_yaw,   vel_yaw,   0, target_yaw,   true, true);
-  Emm_V5_MMCL_Pos_Control(2, dir_pitch, vel_pitch, 0, target_pitch, true, true);
-  // Emm_V5_MMCL_Pos_Control(1, dir_yaw,   200, 100, x, true, false);
-  // Emm_V5_MMCL_Pos_Control(2, dir_pitch, 200, 100, y, true, false);
-  Emm_V5_Multi_Motor_Cmd(0);   // 广播触发，两个电机同时开始
-  last_pos_yaw    = x;
-  last_pos_pitch  = y;
+    if (max_delta > 0U) {
+        vel_yaw   = (uint16_t)((uint64_t)base_speed
+                     * (uint64_t)abs(x - last_pos_yaw) / max_delta);
+        vel_pitch = (uint16_t)((uint64_t)base_speed
+                     * (uint64_t)abs(y - last_pos_pitch) / max_delta);
+    }
+    /* 限制最低速度，防止电机堵转 */
+    if (vel_yaw   < 10U) { vel_yaw   = 10U; }
+    if (vel_pitch < 10U) { vel_pitch = 10U; }
+
+    /* 加载到多电机同步指令队列，snF=true 等待同步触发 */
+    Emm_V5_MMCL_Pos_Control(1, dir_yaw,   vel_yaw,   base_acc, target_yaw,   true, true);
+    Emm_V5_MMCL_Pos_Control(2, dir_pitch, vel_pitch, base_acc, target_pitch, true, true);
+    Emm_V5_Multi_Motor_Cmd(0);   /* 广播触发，两个电机同时开始运动 */
+
+    last_pos_yaw   = x;
+    last_pos_pitch = y;
 }
 
-void Get_Chess(int32_t x, int32_t y) {
-  Move_Pos(x, y);
-  if (arrive_flag) {
-    Magnet_ON();
-    arrive_flag = false;
-  }
-}
-
-void Put_Chess(int32_t x, int32_t y) {
-  Move_Pos(x, y);
-  if (arrive_flag) {
-    Magnet_OFF();
-    arrive_flag = false;
-  }
+/**
+  * @brief  取子→放子命令：写入取子和放子目标坐标，由 MotorTask 状态机异步执行
+  * @param  pick_x, pick_y   取子位置（yaw/pitch 脉冲数）
+  * @param  place_x, place_y 放子位置（yaw/pitch 脉冲数）
+  * @note   非阻塞——只写入 arm_cmd，立即返回
+  */
+void Arm_Execute_Pick_Place(int32_t pick_x, int32_t pick_y,
+                            int32_t place_x, int32_t place_y)
+{
+    arm_cmd.type     = CMD_EXEC;
+    arm_cmd.pick_x   = pick_x;
+    arm_cmd.pick_y   = pick_y;
+    arm_cmd.place_x  = place_x;
+    arm_cmd.place_y  = place_y;
 }
