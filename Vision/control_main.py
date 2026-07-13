@@ -74,6 +74,10 @@ class SerialTextTransport:
             baudrate=self.baudrate,
             timeout=self.timeout_ms / 1000.0,
         )
+        print(
+            f"[SERIAL] opened port={self.port}, baudrate={self.baudrate}",
+            flush=True,
+        )
 
     def close(self) -> None:
         if self._serial is not None:
@@ -86,11 +90,14 @@ class SerialTextTransport:
         data = self._serial.readline()
         if not data:
             return None
-        return data.decode("utf-8", errors="ignore").strip()
+        line = data.decode("utf-8", errors="ignore").strip()
+        print(f"[SERIAL] RX <- {line}", flush=True)
+        return line
 
     def write_line(self, line: str) -> None:
         if self._serial is None:
             raise RuntimeError("Serial transport has not been opened")
+        print(f"[SERIAL] TX -> {line}", flush=True)
         self._serial.write((line + "\n").encode("utf-8"))
         self._serial.flush()
 

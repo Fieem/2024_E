@@ -47,11 +47,9 @@ def format_response_line(response: ModeResponse) -> str:
         return "PULSES,{},{},{},{}".format(*response.pulses4)
 
     if response.kind == "move":
-        if response.pulses4 is None or response.row is None or response.col is None:
-            raise ValueError("move response requires row,col,pulses4")
-        return "MOVE,{},{},{},{},{},{}".format(
-            response.row,
-            response.col,
+        if response.pulses4 is None:
+            raise ValueError("move response requires pulses4")
+        return "PULSES,{},{},{},{}".format(
             response.pulses4[0],
             response.pulses4[1],
             response.pulses4[2],
@@ -72,9 +70,13 @@ def format_response_line(response: ModeResponse) -> str:
 
 def _parse_color(text: str) -> RobotColor:
     normalized = text.strip().upper()
-    if normalized not in {"BLACK", "WHITE"}:
+    color_map = {
+        "B": "BLACK",
+        "W": "WHITE",
+    }
+    if normalized not in color_map:
         raise ProtocolError("BAD_COLOR", f"Invalid color: {text}")
-    return normalized  # type: ignore[return-value]
+    return color_map[normalized]  # type: ignore[return-value]
 
 
 def _parse_int(text: str, field_name: str) -> int:

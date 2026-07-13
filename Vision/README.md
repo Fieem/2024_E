@@ -248,17 +248,25 @@ python control_main.py --vision-config vision_settings.json --control-config vis
 - `BATTLE_START,<color>`
 - `READY`
 
+其中 `<color>` 使用单字符：`B` 表示黑棋，`W` 表示白棋。例如：
+
+```text
+PLACE,B,3,4
+BATTLE_START,W
+```
+
 串口响应报文：
 
 - `PULSES,<pick_p1>,<pick_p2>,<place_p1>,<place_p2>`
-- `MOVE,<row>,<col>,<pick_p1>,<pick_p2>,<place_p1>,<place_p2>`
 - `ERROR,<code>,<message>`
 - `BUSY,<message>`
 
+下棋模式和对弈模式成功时都统一返回 `PULSES`，对弈模式不再通过串口返回行列坐标。
+
 颜色固定为：
 
-- `BLACK`
-- `WHITE`
+- `B`：黑棋
+- `W`：白棋
 
 错误码固定为：
 
@@ -278,7 +286,7 @@ python control_main.py --vision-config vision_settings.json --control-config vis
   - 只对“落子位”这 2 个脉冲做倾斜补偿
   - `|theta_deg| <= 3°` 时按 `0°` 处理
 - `BATTLE_START`：记录机械臂执棋颜色，进入对弈模式
-- `READY`：读取当前稳定整盘状态，若轮到机械臂，则调用 `gomoku_ai` 的 `hard` 难度求下一步，再返回位置和 4 个脉冲
+- `READY`：读取当前稳定整盘状态，若轮到机械臂，则调用 `gomoku_ai` 的 `hard` 难度求下一步，再返回 4 个脉冲
 
 脉冲配置规则：
 
