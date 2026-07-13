@@ -13,6 +13,10 @@ void StartMotorTask(void *argument)
 {
     /* ---- 初始化 CAN 滤波器并启动接收 ---- */
     USER_CAN1_Filter_Init();
+    Emm_V5_Origin_Trigger_Return(1, 0, false);
+    Emm_V5_Origin_Trigger_Return(2, 0, false);
+
+    HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_9);
 
     arm_state = ARM_IDLE;
     arm_cmd.type = CMD_NONE;

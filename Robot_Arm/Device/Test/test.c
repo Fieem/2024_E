@@ -26,9 +26,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cmsis_os2.h"
 #include "usart.h"
 #include "main.h"
 #include "Emm_V5/Emm_V5.h"
+#include "SG90/sg90.h"
 
 static void prints_u(uint8_t index, unsigned int val);
 
@@ -109,11 +111,49 @@ static int test_key_equal(const char *a, const char *b)
 }
 
 static int test_vofa_apply_kv(const char *key, float value) {
-    if (test_key_equal(key, "START")) {
+    if (test_key_equal(key, "ZERO")) {
+        Emm_V5_Origin_Set_O(1, 1);
+        Emm_V5_Origin_Set_O(2, 1);      //设置零点
 
+        Emm_V5_MMCL_En_Control(1, true, false);
+        Emm_V5_MMCL_En_Control(2, true, false);
+        Emm_V5_Multi_Motor_Cmd(0);   // 广播触发，两个电机同时开始
+        last_pos_pitch = 0;
+        last_pos_yaw   = 0;
+        printsf(0,"ZERO");
         return 1;
-
-
+    }
+    if (test_key_equal(key, "ON")) {
+        Magnet_ON();
+        printsf(0,"ON");
+        return 1;
+    }
+    if (test_key_equal(key, "OFF")) {
+        Magnet_OFF();
+        printsf(0,"OFF");
+        return 1;
+    }
+    if (test_key_equal(key, "LOW")) {
+        SG90_SetAngle(Low_Angle);
+        printsf(0,"LOW");
+        return 1;
+    }
+    if (test_key_equal(key, "HIGH")) {
+        SG90_SetAngle(High_Angle);
+        printsf(0,"HIGH");
+        return 1;
+    }
+    if (test_key_equal(key, "DISABLE")) {
+        Emm_V5_MMCL_En_Control(1, false, false);
+        Emm_V5_MMCL_En_Control(2, false, false);
+        Emm_V5_Multi_Motor_Cmd(0);   // 广播触发，两个电机同时开始
+        printsf(0,"DISABLE");
+        return 1;
+    }
+    if (test_key_equal(key, "TEST")) {
+        Move_Pos(800,800);
+        printsf(0,"TEST");
+        return 1;
     }
     /*
      * 在此处添加你的 PID 参数赋值逻辑，例如:

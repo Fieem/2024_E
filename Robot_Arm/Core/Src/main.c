@@ -208,6 +208,8 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+    HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_9);
+    osDelay(500);
   }
   /* USER CODE END Error_Handler_Debug */
 }
