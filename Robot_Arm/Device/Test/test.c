@@ -31,6 +31,7 @@
 #include "main.h"
 #include "Emm_V5/Emm_V5.h"
 #include "SG90/sg90.h"
+#include "Communicate/communicate.h"
 
 static void prints_u(uint8_t index, unsigned int val);
 
@@ -153,6 +154,21 @@ static int test_vofa_apply_kv(const char *key, float value) {
     if (test_key_equal(key, "TEST")) {
         Move_Pos(800,800);
         printsf(0,"TEST");
+        return 1;
+    }
+    if (test_key_equal(key, "PLACETEST")) {
+        comm_send_place('W', 1, 2);
+        printsf(0,"PLACETEST sent");
+        return 1;
+    }
+    if (test_key_equal(key, "BATTLETEST")) {
+        comm_send_battle_start('W');
+        printsf(0,"BATTLETEST sent");
+        return 1;
+    }
+    if (test_key_equal(key, "READYTEST")) {
+        comm_send_ready();
+        printsf(0,"READYTEST sent");
         return 1;
     }
     /*

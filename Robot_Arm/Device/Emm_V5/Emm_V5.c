@@ -1735,25 +1735,17 @@ void Move_Pos(int32_t x, int32_t y)
 }
 
 /**
-  * @brief  取子命令：写入目标坐标，由 MotorTask 状态机异步执行
-  * @param  x, y  目标坐标
+  * @brief  取子→放子命令：写入取子和放子目标坐标，由 MotorTask 状态机异步执行
+  * @param  pick_x, pick_y   取子位置（yaw/pitch 脉冲数）
+  * @param  place_x, place_y 放子位置（yaw/pitch 脉冲数）
   * @note   非阻塞——只写入 arm_cmd，立即返回
   */
-void Get_Chess(int32_t x, int32_t y)
+void Arm_Execute_Pick_Place(int32_t pick_x, int32_t pick_y,
+                            int32_t place_x, int32_t place_y)
 {
-    arm_cmd.type = CMD_GET_CHESS;
-    arm_cmd.x    = x;
-    arm_cmd.y    = y;
-}
-
-/**
-  * @brief  放子命令：写入目标坐标，由 MotorTask 状态机异步执行
-  * @param  x, y  目标坐标
-  * @note   非阻塞——只写入 arm_cmd，立即返回
-  */
-void Put_Chess(int32_t x, int32_t y)
-{
-    arm_cmd.type = CMD_PUT_CHESS;
-    arm_cmd.x    = x;
-    arm_cmd.y    = y;
+    arm_cmd.type     = CMD_EXEC;
+    arm_cmd.pick_x   = pick_x;
+    arm_cmd.pick_y   = pick_y;
+    arm_cmd.place_x  = place_x;
+    arm_cmd.place_y  = place_y;
 }
