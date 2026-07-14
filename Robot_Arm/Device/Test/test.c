@@ -61,7 +61,6 @@ static char    s_log_lines[PRINTSF_MAX_LINES][PRINTSF_MAX_LINE_LEN];
 static uint8_t s_log_head  = 0U;
 static uint8_t s_log_count = 0U;
 static osMutexId_t s_screen_output_mutex = NULL;
-static osMessageQueueId_t s_screen_output_queue = NULL;
 
 /* ================================================================
  *  环形缓冲区操作
@@ -360,47 +359,6 @@ void test_vofa_poll(void)
 void screen_output_init(void)
 {
     s_screen_output_mutex = osMutexNew(NULL);
-    s_screen_output_queue = osMessageQueueNew(
-        SCREEN_OUTPUT_QUEUE_LEN,
-        SCREEN_OUTPUT_MESSAGE_LEN,
-        NULL
-    );
-}
-
-void screen_output_post(const char *message)
-{
-    char queued_message[SCREEN_OUTPUT_MESSAGE_LEN] = {0};
-
-    if (message == NULL || s_screen_output_queue == NULL)
-    {
-        return;
-    }
-
-    strncpy(queued_message, message, SCREEN_OUTPUT_MESSAGE_LEN - 1U);
-    (void)osMessageQueuePut(s_screen_output_queue, queued_message, 0U, 0U);
-}
-
-void screen_output_poll(void)
-{
-    char message[SCREEN_OUTPUT_MESSAGE_LEN] = {0};
-    int has_message = 0;
-
-    if (s_screen_output_queue == NULL)
-    {
-        return;
-    }
-
-    while (osMessageQueueGet(s_screen_output_queue, message, NULL, 0U) == osOK)
-    {
-        message[SCREEN_OUTPUT_MESSAGE_LEN - 1U] = '\0';
-        has_message = 1;
-    }
-
-    if (has_message)
-    {
-        /* 只显示最新一条，避免连续错误让屏幕指令不断变长。 */
-        prints(0U, message);
-    }
 }
 
 static void screen_output_lock(void)
