@@ -87,18 +87,16 @@ static void comm_pi_parse_line(const char *line)
         /* ERROR,<code>,<message> */
         char *code = strtok_r(NULL, ",", &saveptr);
         char *msg  = strtok_r(NULL, ",", &saveptr);
-        char display[64];
-        snprintf(display, sizeof(display), "ERR %s: %s",
-                 code ? code : "?", msg ? msg : "");
-        prints(0, display);
+        /* 暂时关闭树莓派错误响应的串口屏回显，用于隔离通信阻塞问题。 */
+        (void)code;
+        (void)msg;
         comm_response_ready = false;
     }
     else if (strcmp_upper(cmd, "BUSY") == 0) {
         /* BUSY,<message> */
         char *msg = strtok_r(NULL, ",", &saveptr);
-        char display[64];
-        snprintf(display, sizeof(display), "BUSY: %s", msg ? msg : "");
-        prints(0, display);
+        /* 暂时关闭树莓派忙状态的串口屏回显，用于隔离通信阻塞问题。 */
+        (void)msg;
         comm_response_ready = false;
     }
     /* 未知命令 → 静默忽略 */
