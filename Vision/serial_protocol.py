@@ -3,6 +3,18 @@ from __future__ import annotations
 from vision_types import ModeRequest, ModeResponse, RobotColor
 
 
+SHORT_ERROR_MESSAGES = {
+    "NO_BOARD": "NO BOARD",
+    "BAD_CMD": "BAD COMMAND",
+    "BAD_COLOR": "BAD COLOR",
+    "BAD_POS": "BAD POSITION",
+    "NO_SLOT": "NO SLOT",
+    "AI_TURN_MISMATCH": "WRONG TURN",
+    "ILLEGAL_BOARD": "ILLEGAL BOARD",
+    "AI_FAIL": "AI FAILED",
+}
+
+
 class ProtocolError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -57,12 +69,13 @@ def format_response_line(response: ModeResponse) -> str:
         )
 
     if response.kind == "busy":
-        return "BUSY,{}".format(_sanitize_message(response.message or "busy"))
+        return "BUSY,{}".format(_compact_busy_message(response.message))
 
     if response.kind == "error":
+        error_code = response.error_code or "BAD_CMD"
         return "ERROR,{},{}".format(
-            response.error_code or "BAD_CMD",
-            _sanitize_message(response.message or "error"),
+            error_code,
+            SHORT_ERROR_MESSAGES.get(error_code, "ERROR"),
         )
 
     raise ValueError(f"Unsupported response kind: {response.kind}")
@@ -86,5 +99,14 @@ def _parse_int(text: str, field_name: str) -> int:
         raise ProtocolError("BAD_CMD", f"Invalid {field_name}: {text}") from exc
 
 
-def _sanitize_message(message: str) -> str:
-    return message.replace(",", ";").replace("\n", " ").strip()
+def _compact_busy_message(message: str | None) -> str:
+    normalized = (message or "").strip().lower()
+    if normalized.startswith("battle_active_"):
+        return "BATTLE ON"
+    if normalized == "game_over_black_win":
+        return "BLACK WIN"
+    if normalized == "game_over_white_win":
+        return "WHITE WIN"
+    if normalized == "game_over_draw":
+        return "DRAW"
+    return "BUSY"

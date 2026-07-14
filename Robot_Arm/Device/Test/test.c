@@ -57,6 +57,7 @@ uint8_t s_rx_byte = 0U;
 static char    s_log_lines[PRINTSF_MAX_LINES][PRINTSF_MAX_LINE_LEN];
 static uint8_t s_log_head  = 0U;
 static uint8_t s_log_count = 0U;
+static osMutexId_t s_screen_output_mutex = NULL;
 
 /* ================================================================
  *  环形缓冲区操作
@@ -352,12 +353,28 @@ void test_vofa_poll(void)
  *  Nextion 显示函数
  * ================================================================ */
 
-/**
-  * @brief  Nextion 文本控件打印
-  * @param  index   控件索引（t0.txt, t1.txt ...）
-  * @param  content 文本内容
-  */
-void prints(uint8_t index, const char *content)
+void screen_output_init(void)
+{
+    s_screen_output_mutex = osMutexNew(NULL);
+}
+
+static void screen_output_lock(void)
+{
+    if (s_screen_output_mutex != NULL)
+    {
+        (void)osMutexAcquire(s_screen_output_mutex, osWaitForever);
+    }
+}
+
+static void screen_output_unlock(void)
+{
+    if (s_screen_output_mutex != NULL)
+    {
+        (void)osMutexRelease(s_screen_output_mutex);
+    }
+}
+
+static void prints_unlocked(uint8_t index, const char *content)
 {
     if (content == NULL)
     {
@@ -367,6 +384,18 @@ void prints(uint8_t index, const char *content)
     printf("page0.t%u.txt=\"%s\"", (unsigned int)index, content);
     printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
     fflush(stdout);
+}
+
+/**
+  * @brief  Nextion 文本控件打印
+  * @param  index   控件索引（t0.txt, t1.txt ...）
+  * @param  content 文本内容
+  */
+void prints(uint8_t index, const char *content)
+{
+    screen_output_lock();
+    prints_unlocked(index, content);
+    screen_output_unlock();
 }
 
 static void prints_u(uint8_t index, unsigned int val)
@@ -418,6 +447,8 @@ void printsf(uint8_t index, const char *fmt, ...)
         return;
     }
 
+    screen_output_lock();
+
     va_start(args, fmt);
     (void)vsnprintf(line, sizeof(line), fmt, args);
     va_end(args);
@@ -447,7 +478,8 @@ void printsf(uint8_t index, const char *fmt, ...)
         off += (size_t)n;
     }
 
-    prints(index, merged);
+    prints_unlocked(index, merged);
+    screen_output_unlock();
 }
 
 /**
@@ -457,6 +489,8 @@ void printsf_clear(uint8_t index)
 {
     uint8_t i;
 
+    screen_output_lock();
+
     s_log_head  = 0U;
     s_log_count = 0U;
 
@@ -465,5 +499,6 @@ void printsf_clear(uint8_t index)
         s_log_lines[i][0] = '\0';
     }
 
-    prints(index, "");
+    prints_unlocked(index, "");
+    screen_output_unlock();
 }

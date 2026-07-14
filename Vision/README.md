@@ -262,6 +262,7 @@ BATTLE_START,W
 - `BUSY,<message>`
 
 下棋模式和对弈模式成功时都统一返回 `PULSES`，对弈模式不再通过串口返回行列坐标。
+`ERROR` 和 `BUSY` 后面的消息最多包含两个英文单词，例如 `ERROR,NO_BOARD,NO BOARD`、`BUSY,BATTLE ON`。
 
 颜色固定为：
 

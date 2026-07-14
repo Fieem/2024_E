@@ -37,6 +37,9 @@ void test_vofa_parse_frame(const char *frame);
 // 例: prints(0, "helloworld") -> t0.txt="helloworld" + 0xFF 0xFF 0xFF
 void prints(uint8_t index, const char *content);
 
+// 在 RTOS 创建任务前初始化串口屏输出互斥锁
+void screen_output_init(void);
+
 // 带格式化参数的 Nextion 文本控件打印:
 // 例: printsf(0, "speed=%.2f", speed);
 void printsf(uint8_t index, const char *fmt, ...);
