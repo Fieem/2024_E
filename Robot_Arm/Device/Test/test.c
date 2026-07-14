@@ -361,12 +361,13 @@ void screen_output_init(void)
     s_screen_output_mutex = osMutexNew(NULL);
 }
 
-static void screen_output_lock(void)
+static int screen_output_lock(void)
 {
-    if (s_screen_output_mutex != NULL)
+    if (s_screen_output_mutex == NULL)
     {
-        (void)osMutexAcquire(s_screen_output_mutex, osWaitForever);
+        return 1;
     }
+    return osMutexAcquire(s_screen_output_mutex, 100U) == osOK;
 }
 
 static void screen_output_unlock(void)
@@ -375,6 +376,33 @@ static void screen_output_unlock(void)
     {
         (void)osMutexRelease(s_screen_output_mutex);
     }
+}
+
+static int screen_uart_write(const uint8_t *data, uint16_t length)
+{
+    uint32_t start = HAL_GetTick();
+    uint16_t i;
+
+    for (i = 0U; i < length; i++)
+    {
+        while ((USART3->SR & USART_SR_TXE) == 0U)
+        {
+            if ((HAL_GetTick() - start) >= 100U)
+            {
+                return 0;
+            }
+        }
+        USART3->DR = data[i];
+    }
+
+    while ((USART3->SR & USART_SR_TC) == 0U)
+    {
+        if ((HAL_GetTick() - start) >= 100U)
+        {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static void prints_unlocked(uint8_t index, const char *content)
@@ -393,8 +421,8 @@ static void prints_unlocked(uint8_t index, const char *content)
         {
             len = (int)sizeof(g_screen_tx_buf) - 1;
         }
-        (void)HAL_UART_Transmit(&huart3, (uint8_t *)g_screen_tx_buf,
-                                (uint16_t)len, 100U);
+        (void)screen_uart_write((const uint8_t *)g_screen_tx_buf,
+                                (uint16_t)len);
     }
 }
 /**
@@ -404,7 +432,10 @@ static void prints_unlocked(uint8_t index, const char *content)
   */
 void prints(uint8_t index, const char *content)
 {
-    screen_output_lock();
+    if (!screen_output_lock())
+    {
+        return;
+    }
     prints_unlocked(index, content);
     screen_output_unlock();
 }
@@ -459,7 +490,10 @@ void printsf(uint8_t index, const char *fmt, ...)
         return;
     }
 
-    screen_output_lock();
+    if (!screen_output_lock())
+    {
+        return;
+    }
 
     va_start(args, fmt);
     (void)vsnprintf(line, sizeof(line), fmt, args);
@@ -501,7 +535,10 @@ void printsf_clear(uint8_t index)
 {
     uint8_t i;
 
-    screen_output_lock();
+    if (!screen_output_lock())
+    {
+        return;
+    }
 
     s_log_head  = 0U;
     s_log_count = 0U;
