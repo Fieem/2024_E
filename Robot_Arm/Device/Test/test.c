@@ -32,7 +32,10 @@
 #include "Emm_V5/Emm_V5.h"
 #include "SG90/sg90.h"
 #include "Communicate/communicate.h"
+#include <string.h>
 
+#define USART3_TX_DMA_BUF_LEN  512U
+static char g_dma_tx_buf[USART3_TX_DMA_BUF_LEN];
 static void prints_u(uint8_t index, unsigned int val);
 
 
@@ -353,7 +356,7 @@ void test_vofa_poll(void)
  *  Nextion 显示函数
  * ================================================================ */
 
-void screen_output_init(void)
+ void screen_output_init(void)
 {
     s_screen_output_mutex = osMutexNew(NULL);
 }
@@ -385,7 +388,6 @@ static void prints_unlocked(uint8_t index, const char *content)
     printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
     fflush(stdout);
 }
-
 /**
   * @brief  Nextion 文本控件打印
   * @param  index   控件索引（t0.txt, t1.txt ...）
@@ -393,9 +395,14 @@ static void prints_unlocked(uint8_t index, const char *content)
   */
 void prints(uint8_t index, const char *content)
 {
-    screen_output_lock();
-    prints_unlocked(index, content);
-    screen_output_unlock();
+    if (content == NULL)
+    {
+        content = "";
+    }
+
+    printf("page0.t%u.txt=\"%s\"", (unsigned int)index, content);
+    printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
+    fflush(stdout);
 }
 
 static void prints_u(uint8_t index, unsigned int val)
@@ -436,8 +443,8 @@ static void printsf_store_line(const char *line)
   */
 void printsf(uint8_t index, const char *fmt, ...)
 {
-    char    line[PRINTSF_MAX_LINE_LEN];
-    char    merged[PRINTSF_TEXT_BUF_LEN];
+    static char    line[PRINTSF_MAX_LINE_LEN];
+    static char    merged[PRINTSF_TEXT_BUF_LEN];
     va_list args;
     size_t  off = 0U;
     uint8_t i;
