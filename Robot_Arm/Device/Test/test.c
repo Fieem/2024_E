@@ -174,17 +174,18 @@ static int test_vofa_apply_kv(const char *key, float value) {
     }
     if (test_key_equal(key, "POSR")) {
         s_cmd_row = (uint8_t)value;
-        printsf(0, "POSR=%u", s_cmd_row);
+        printsf(0, "POSR=%u", (unsigned int)s_cmd_row);
         return 1;
     }
     if (test_key_equal(key, "POSC")) {
         s_cmd_col = (uint8_t)value;
-        printsf(0, "POSC=%u", s_cmd_col);
+        printsf(0, "POSC=%u", (unsigned int)s_cmd_col);
         return 1;
     }
     if (test_key_equal(key, "PLACE")) {
         comm_send_place(s_cmd_color, s_cmd_row, s_cmd_col);
-        printsf(0, "PLACE %c,%u,%u", s_cmd_color, s_cmd_row, s_cmd_col);
+        printsf(0, "PLACE %c,%u,%u", s_cmd_color,
+                (unsigned int)s_cmd_row, (unsigned int)s_cmd_col);
         return 1;
     }
     if (test_key_equal(key, "BATTLE")) {

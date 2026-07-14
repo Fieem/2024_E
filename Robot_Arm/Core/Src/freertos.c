@@ -58,7 +58,7 @@ const osThreadAttr_t defaultTask_attributes = {
 osThreadId_t ReceiveTaskHandle;
 const osThreadAttr_t ReceiveTask_attributes = {
   .name = "ReceiveTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for MotorTask */
@@ -72,7 +72,7 @@ const osThreadAttr_t MotorTask_attributes = {
 osThreadId_t ScreenTaskHandle;
 const osThreadAttr_t ScreenTask_attributes = {
   .name = "ScreenTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for Sg90Task */
