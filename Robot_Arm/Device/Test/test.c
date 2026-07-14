@@ -34,8 +34,8 @@
 #include "Communicate/communicate.h"
 #include <string.h>
 
-#define USART3_TX_DMA_BUF_LEN  512U
-static char g_dma_tx_buf[USART3_TX_DMA_BUF_LEN];
+#define USART3_TX_BUF_LEN  512U
+static char g_screen_tx_buf[USART3_TX_BUF_LEN];
 static void prints_u(uint8_t index, unsigned int val);
 
 
@@ -61,6 +61,7 @@ static char    s_log_lines[PRINTSF_MAX_LINES][PRINTSF_MAX_LINE_LEN];
 static uint8_t s_log_head  = 0U;
 static uint8_t s_log_count = 0U;
 static osMutexId_t s_screen_output_mutex = NULL;
+static osMessageQueueId_t s_screen_output_queue = NULL;
 
 /* ================================================================
  *  环形缓冲区操作
@@ -356,9 +357,50 @@ void test_vofa_poll(void)
  *  Nextion 显示函数
  * ================================================================ */
 
- void screen_output_init(void)
+void screen_output_init(void)
 {
     s_screen_output_mutex = osMutexNew(NULL);
+    s_screen_output_queue = osMessageQueueNew(
+        SCREEN_OUTPUT_QUEUE_LEN,
+        SCREEN_OUTPUT_MESSAGE_LEN,
+        NULL
+    );
+}
+
+void screen_output_post(const char *message)
+{
+    char queued_message[SCREEN_OUTPUT_MESSAGE_LEN] = {0};
+
+    if (message == NULL || s_screen_output_queue == NULL)
+    {
+        return;
+    }
+
+    strncpy(queued_message, message, SCREEN_OUTPUT_MESSAGE_LEN - 1U);
+    (void)osMessageQueuePut(s_screen_output_queue, queued_message, 0U, 0U);
+}
+
+void screen_output_poll(void)
+{
+    char message[SCREEN_OUTPUT_MESSAGE_LEN] = {0};
+    int has_message = 0;
+
+    if (s_screen_output_queue == NULL)
+    {
+        return;
+    }
+
+    while (osMessageQueueGet(s_screen_output_queue, message, NULL, 0U) == osOK)
+    {
+        message[SCREEN_OUTPUT_MESSAGE_LEN - 1U] = '\0';
+        has_message = 1;
+    }
+
+    if (has_message)
+    {
+        /* 只显示最新一条，避免连续错误让屏幕指令不断变长。 */
+        prints(0U, message);
+    }
 }
 
 static void screen_output_lock(void)
@@ -384,9 +426,18 @@ static void prints_unlocked(uint8_t index, const char *content)
         content = "";
     }
 
-    printf("page0.t%u.txt=\"%s\"", (unsigned int)index, content);
-    printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
-    fflush(stdout);
+    int len = snprintf(g_screen_tx_buf, sizeof(g_screen_tx_buf),
+                       "page0.t%u.txt=\"%s\"\xFF\xFF\xFF",
+                       (unsigned int)index, content);
+    if (len > 0)
+    {
+        if (len >= (int)sizeof(g_screen_tx_buf))
+        {
+            len = (int)sizeof(g_screen_tx_buf) - 1;
+        }
+        (void)HAL_UART_Transmit(&huart3, (uint8_t *)g_screen_tx_buf,
+                                (uint16_t)len, 100U);
+    }
 }
 /**
   * @brief  Nextion 文本控件打印
@@ -394,23 +445,11 @@ static void prints_unlocked(uint8_t index, const char *content)
   * @param  content 文本内容
   */
 void prints(uint8_t index, const char *content)
-  {
-      if (content == NULL) content = "";
-
-      /* 等上一次 DMA 发完 */
-      while (HAL_DMA_GetState(huart3.hdmatx) != HAL_DMA_STATE_READY) {
-          osDelay(1);
-      }
-
-      int len = snprintf(g_dma_tx_buf, sizeof(g_dma_tx_buf),
-                         "page0.t%u.txt=\"%s\"\xFF\xFF\xFF",
-                         (unsigned int)index, content);
-    if (len < 0 || len >= (int)sizeof(g_dma_tx_buf)) {
-        len = (int)sizeof(g_dma_tx_buf) - 1;
-    }
-
-    HAL_UART_Transmit_DMA(&huart3, (uint8_t *)g_dma_tx_buf, (uint16_t)len);
-  }
+{
+    screen_output_lock();
+    prints_unlocked(index, content);
+    screen_output_unlock();
+}
 
 
 static void prints_u(uint8_t index, unsigned int val)

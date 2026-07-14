@@ -62,18 +62,19 @@ static int strcmp_upper(const char *a, const char *b_upper)
 static void comm_pi_parse_line(const char *line)
 {
     char work[COMM_FRAME_MAX_LEN];
+    char *saveptr = NULL;
     strncpy(work, line, sizeof(work) - 1);
     work[sizeof(work) - 1] = '\0';
 
-    char *cmd = strtok(work, ",");
+    char *cmd = strtok_r(work, ",", &saveptr);
     if (cmd == NULL) return;
 
     if (strcmp_upper(cmd, "PULSES") == 0) {
         /* PULSES,<pick_p1>,<pick_p2>,<place_p1>,<place_p2> */
-        char *a1 = strtok(NULL, ",");
-        char *a2 = strtok(NULL, ",");
-        char *a3 = strtok(NULL, ",");
-        char *a4 = strtok(NULL, ",");
+        char *a1 = strtok_r(NULL, ",", &saveptr);
+        char *a2 = strtok_r(NULL, ",", &saveptr);
+        char *a3 = strtok_r(NULL, ",", &saveptr);
+        char *a4 = strtok_r(NULL, ",", &saveptr);
         if (a1 && a2 && a3 && a4) {
             comm_pick_p1  = atoi(a1);
             comm_pick_p2  = atoi(a2);
@@ -84,15 +85,20 @@ static void comm_pi_parse_line(const char *line)
     }
     else if (strcmp_upper(cmd, "ERROR") == 0) {
         /* ERROR,<code>,<message> */
-        char *code = strtok(NULL, ",");
-        char *msg  = strtok(NULL, ",");
-        printsf(0, "ERR %s: %s", code ? code : "?", msg ? msg : "");
+        char *code = strtok_r(NULL, ",", &saveptr);
+        char *msg  = strtok_r(NULL, ",", &saveptr);
+        char display[64];
+        snprintf(display, sizeof(display), "ERR %s: %s",
+                 code ? code : "?", msg ? msg : "");
+        screen_output_post(display);
         comm_response_ready = false;
     }
     else if (strcmp_upper(cmd, "BUSY") == 0) {
         /* BUSY,<message> */
-        char *msg = strtok(NULL, ",");
-        printsf(0, "BUSY: %s", msg ? msg : "");
+        char display[64];
+        char *msg = strtok_r(NULL, ",", &saveptr);
+        snprintf(display, sizeof(display), "BUSY: %s", msg ? msg : "");
+        screen_output_post(display);
         comm_response_ready = false;
     }
     /* 未知命令 → 静默忽略 */

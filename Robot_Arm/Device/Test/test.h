@@ -19,6 +19,8 @@
 #define PRINTSF_MAX_LINES      (8U)
 #define PRINTSF_MAX_LINE_LEN   (256U)
 #define PRINTSF_TEXT_BUF_LEN   (PRINTSF_MAX_LINES * (PRINTSF_MAX_LINE_LEN + 2U) + 1U)
+#define SCREEN_OUTPUT_QUEUE_LEN    (8U)
+#define SCREEN_OUTPUT_MESSAGE_LEN  (64U)
 // 初始化 VOFA+ 接收状态
 void test_vofa_init(void);
 
@@ -39,6 +41,12 @@ void prints(uint8_t index, const char *content);
 
 // 在 RTOS 创建任务前初始化串口屏输出互斥锁
 void screen_output_init(void);
+
+// 将短消息投递给屏幕任务，由屏幕任务统一发送到 USART3
+void screen_output_post(const char *message);
+
+// 屏幕任务轮询并发送待显示消息
+void screen_output_poll(void);
 
 // 带格式化参数的 Nextion 文本控件打印:
 // 例: printsf(0, "speed=%.2f", speed);
