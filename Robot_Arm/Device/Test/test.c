@@ -32,7 +32,10 @@
 #include "Emm_V5/Emm_V5.h"
 #include "SG90/sg90.h"
 #include "Communicate/communicate.h"
+#include <string.h>
 
+#define USART3_TX_DMA_BUF_LEN  512U
+static char g_dma_tx_buf[USART3_TX_DMA_BUF_LEN];
 static void prints_u(uint8_t index, unsigned int val);
 
 
@@ -357,18 +360,35 @@ void test_vofa_poll(void)
   * @param  index   控件索引（t0.txt, t1.txt ...）
   * @param  content 文本内容
   */
+// void prints(uint8_t index, const char *content)
+// {
+//     if (content == NULL)
+//     {
+//         content = "";
+//     }
+//
+//     printf("page0.t%u.txt=\"%s\"", (unsigned int)index, content);
+//     printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
+//     fflush(stdout);
+// }
 void prints(uint8_t index, const char *content)
-{
-    if (content == NULL)
-    {
-        content = "";
+  {
+      if (content == NULL) content = "";
+
+      /* 等上一次 DMA 发完 */
+      while (HAL_DMA_GetState(huart3.hdmatx) != HAL_DMA_STATE_READY) {
+          osDelay(1);
+      }
+
+      int len = snprintf(g_dma_tx_buf, sizeof(g_dma_tx_buf),
+                         "page0.t%u.txt=\"%s\"\xFF\xFF\xFF",
+                         (unsigned int)index, content);
+    if (len < 0 || len >= (int)sizeof(g_dma_tx_buf)) {
+        len = (int)sizeof(g_dma_tx_buf) - 1;
     }
 
-    printf("page0.t%u.txt=\"%s\"", (unsigned int)index, content);
-    printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
-    fflush(stdout);
-}
-
+    HAL_UART_Transmit_DMA(&huart3, (uint8_t *)g_dma_tx_buf, (uint16_t)len);
+  }
 static void prints_u(uint8_t index, unsigned int val)
 {
     char buf[16];
@@ -407,8 +427,8 @@ static void printsf_store_line(const char *line)
   */
 void printsf(uint8_t index, const char *fmt, ...)
 {
-    char    line[PRINTSF_MAX_LINE_LEN];
-    char    merged[PRINTSF_TEXT_BUF_LEN];
+    static char    line[PRINTSF_MAX_LINE_LEN];
+    static char    merged[PRINTSF_TEXT_BUF_LEN];
     va_list args;
     size_t  off = 0U;
     uint8_t i;
