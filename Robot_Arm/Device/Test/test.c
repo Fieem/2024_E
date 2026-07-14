@@ -394,16 +394,24 @@ static void prints_unlocked(uint8_t index, const char *content)
   * @param  content 文本内容
   */
 void prints(uint8_t index, const char *content)
-{
-    if (content == NULL)
-    {
-        content = "";
+  {
+      if (content == NULL) content = "";
+
+      /* 等上一次 DMA 发完 */
+      while (HAL_DMA_GetState(huart3.hdmatx) != HAL_DMA_STATE_READY) {
+          osDelay(1);
+      }
+
+      int len = snprintf(g_dma_tx_buf, sizeof(g_dma_tx_buf),
+                         "page0.t%u.txt=\"%s\"\xFF\xFF\xFF",
+                         (unsigned int)index, content);
+    if (len < 0 || len >= (int)sizeof(g_dma_tx_buf)) {
+        len = (int)sizeof(g_dma_tx_buf) - 1;
     }
 
-    printf("page0.t%u.txt=\"%s\"", (unsigned int)index, content);
-    printf("%c%c%c", (char)0xFF, (char)0xFF, (char)0xFF);
-    fflush(stdout);
-}
+    HAL_UART_Transmit_DMA(&huart3, (uint8_t *)g_dma_tx_buf, (uint16_t)len);
+  }
+
 
 static void prints_u(uint8_t index, unsigned int val)
 {
