@@ -119,7 +119,7 @@ class VisionRuntime:
         self.camera = UsbCamera(camera_config)
         self.board_detector = BoardDetector(board_config)
         self.grid_model = GridModel(GridModelConfig(board_size=board_config.board_size))
-        self.piece_detector = PieceDetector(piece_config)
+        self.piece_detector = PieceDetector(piece_config, board_config)
         self.smoother = BoardStateSmoother(history_size, consensus_frames)
         self.board_rows, self.board_cols = self.grid_model.board_shape()
         self.latest_result: VisionResult | None = None
@@ -141,6 +141,7 @@ class VisionRuntime:
                 detection.warped_image,
                 self.grid_model.cells,
                 self.grid_model.board_shape(),
+                red_board_image=detection.normalized_warped_image,
             )
             smoothed_cells, stable, stable_frames = self.smoother.update(cell_results)
             smoothed_cells = attach_raw_centers(smoothed_cells, detection.homography)

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from board_detector import create_red_mask
+from board_detector import BoardDetectorConfig, create_red_mask
 from vision_types import CellGeometry, CellResult
 
 
@@ -29,27 +29,39 @@ class PieceDetectorConfig:
 
 
 class PieceDetector:
-    def __init__(self, config: PieceDetectorConfig) -> None:
+    def __init__(
+        self,
+        config: PieceDetectorConfig,
+        red_mask_config: BoardDetectorConfig | None = None,
+    ) -> None:
         self.config = config
+        # Use the same HSV thresholds as board localization so red_ratio matches red_mask.
+        self.red_mask_config = red_mask_config
 
     def detect(
         self,
         board_image: np.ndarray,
         cells: list[CellGeometry],
         board_shape: tuple[int, int],
+        red_board_image: np.ndarray | None = None,
     ) -> tuple[list[CellResult], list[list[str]]]:
         rows, cols = board_shape
         cell_results: list[CellResult] = []
         state_matrix = [["empty" for _ in range(cols)] for _ in range(rows)]
 
         for geometry in cells:
-            result = self._classify_cell(board_image, geometry)
+            result = self._classify_cell(board_image, geometry, red_board_image)
             cell_results.append(result)
             state_matrix[result.row][result.col] = result.state
 
         return cell_results, state_matrix
 
-    def _classify_cell(self, board_image: np.ndarray, geometry: CellGeometry) -> CellResult:
+    def _classify_cell(
+        self,
+        board_image: np.ndarray,
+        geometry: CellGeometry,
+        red_board_image: np.ndarray | None = None,
+    ) -> CellResult:
         x1, y1, x2, y2 = geometry.bbox
         roi = board_image[y1:y2, x1:x2]
         if roi.size == 0:
@@ -60,8 +72,17 @@ class PieceDetector:
                 diagnostics={"reason": "empty_roi"},
             )
 
+        red_source = red_board_image if red_board_image is not None else board_image
+        red_roi = red_source[y1:y2, x1:x2]
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        red_mask = create_red_mask(roi)
+        red_config = self.red_mask_config
+        red_mask = create_red_mask(
+            red_roi if red_roi.size else roi,
+            lower_1=red_config.red_lower_1 if red_config else (0, 70, 50),
+            upper_1=red_config.red_upper_1 if red_config else (12, 255, 255),
+            lower_2=red_config.red_lower_2 if red_config else (165, 70, 50),
+            upper_2=red_config.red_upper_2 if red_config else (180, 255, 255),
+        )
         circle_mask = self._build_circle_mask(
             roi.shape[:2],
             self.config.sample_radius_ratio,
@@ -167,15 +188,22 @@ class PieceDetector:
                 diagnostics=diagnostics,
             )
 
-        strong_white = (
-            effective_white_ratio > black_ratio
-            and (
-                white_ratio >= self.config.white_min_piece_area_ratio
-                or white_norm_ratio >= self.config.white_norm_min_piece_area_ratio
+        # A specular highlight on a black piece can satisfy the relaxed white
+        # rule. Require raw white evidence to clearly dominate black evidence
+        # before allowing a white result, and reserve normalized evidence for
+        # cells without a convincing black component.
+        black_present = black_ratio >= self.config.min_piece_area_ratio
+        white_dominant = white_ratio >= black_ratio + 0.05
+        strong_white = white_dominant and (
+            white_ratio >= self.config.white_min_piece_area_ratio
+            or (
+                white_norm_ratio >= self.config.white_norm_min_piece_area_ratio
+                and not black_present
             )
         )
         relaxed_white = (
-            effective_white_ratio >= min(
+            not black_present
+            and effective_white_ratio >= min(
                 self.config.white_relaxed_piece_area_ratio,
                 self.config.white_norm_min_piece_area_ratio,
             )
@@ -189,10 +217,10 @@ class PieceDetector:
                 self.config.white_norm_saturation_max,
             )
         )
-        black_present = black_ratio >= self.config.min_piece_area_ratio
         white_present = strong_white or relaxed_white
         diagnostics["black_present"] = black_present
         diagnostics["white_present"] = white_present
+        diagnostics["white_dominant"] = white_dominant
 
         if strong_white or relaxed_white:
             confidence = min(

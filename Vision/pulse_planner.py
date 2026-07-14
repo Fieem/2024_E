@@ -34,11 +34,16 @@ def cell_to_pulses_with_tilt(
     theta_deg: float | None,
     *,
     dead_zone_deg: float = 3.0,
+    max_tilt_deg: float = 55.0,
 ) -> tuple[int, int]:
     if row < 0 or row >= 7 or col < 0 or col >= 7:
         raise PulsePlanningError("BAD_POS", f"Board cell out of range: ({row},{col})")
 
-    effective_theta = normalize_theta_with_dead_zone(theta_deg, dead_zone_deg)
+    effective_theta = normalize_theta_with_dead_zone(
+        theta_deg,
+        dead_zone_deg,
+        max_tilt_deg,
+    )
     if effective_theta == 0.0:
         return config.board_cells[row][col]
 
@@ -69,6 +74,7 @@ def build_move_pulses(
     *,
     theta_deg: float | None = None,
     dead_zone_deg: float = 3.0,
+    max_tilt_deg: float = 55.0,
 ) -> tuple[int, int, int, int]:
     slot_index = next_pick_slot(color, board_state)
     pick_p1, pick_p2 = slot_to_pulses(config, color, slot_index)
@@ -78,6 +84,7 @@ def build_move_pulses(
         col,
         theta_deg,
         dead_zone_deg=dead_zone_deg,
+        max_tilt_deg=max_tilt_deg,
     )
     return pick_p1, pick_p2, place_p1, place_p2
 
@@ -86,10 +93,16 @@ def _color_to_cell_state(color: RobotColor) -> str:
     return "black" if color == "BLACK" else "white"
 
 
-def normalize_theta_with_dead_zone(theta_deg: float | None, dead_zone_deg: float) -> float:
+def normalize_theta_with_dead_zone(
+    theta_deg: float | None,
+    dead_zone_deg: float,
+    max_tilt_deg: float = 55.0,
+) -> float:
     if theta_deg is None:
         return 0.0
     theta = float(theta_deg)
+    max_tilt = abs(float(max_tilt_deg))
+    theta = min(max(theta, -max_tilt), max_tilt)
     if abs(theta) <= abs(float(dead_zone_deg)):
         return 0.0
     return theta

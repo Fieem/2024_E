@@ -132,6 +132,11 @@ class BoardDetector:
             homography,
             (self.config.board_size, self.config.board_size),
         )
+        normalized_warped = cv2.warpPerspective(
+            board_frame,
+            homography,
+            (self.config.board_size, self.config.board_size),
+        )
         raw_angle_deg = self._compute_top_edge_angle_deg(ordered_corners)
         angle_deg = self._smooth_angle_deg(
             self._normalize_angle_deg(raw_angle_deg - self.config.theta_zero_ref_deg)
@@ -164,6 +169,7 @@ class BoardDetector:
             corners=ordered_corners,
             contour=contour,
             warped_image=warped,
+            normalized_warped_image=normalized_warped,
             mask=mask,
             annotated_frame=annotated,
             homography=homography,

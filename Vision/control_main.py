@@ -153,6 +153,7 @@ class VisionController:
                 snapshot.board_state,
                 theta_deg=tilt_theta,
                 dead_zone_deg=tilt_dead_zone,
+                max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
             )
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)

@@ -10,7 +10,8 @@
   },
   "tilt_compensation": {
     "enabled": true,
-    "dead_zone_deg": 3.0
+    "dead_zone_deg": 3.0,
+    "max_tilt_deg": 55.0
   },
   "pulse_config": {
     "black_slots": [

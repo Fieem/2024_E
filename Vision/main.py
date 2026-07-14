@@ -347,7 +347,7 @@ def main() -> None:
     camera = UsbCamera(current_camera_config)
     board_detector = BoardDetector(current_board_config)
     grid_model = GridModel(GridModelConfig(board_size=current_board_config.board_size))
-    piece_detector = PieceDetector(current_piece_config)
+    piece_detector = PieceDetector(current_piece_config, current_board_config)
     smoother = BoardStateSmoother(args.history_size, args.consensus_frames)
 
     board_rows, board_cols = grid_model.board_shape()
@@ -369,6 +369,7 @@ def main() -> None:
                     detection.warped_image,
                     grid_model.cells,
                     grid_model.board_shape(),
+                    red_board_image=detection.normalized_warped_image,
                 )
                 smoothed_cells, stable, stable_frames = smoother.update(cell_results)
                 smoothed_cells = attach_raw_centers(smoothed_cells, detection.homography)

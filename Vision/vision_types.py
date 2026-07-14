@@ -61,6 +61,7 @@ class BoardDetectionResult:
     corners: Any = None
     contour: Any = None
     warped_image: Any = None
+    normalized_warped_image: Any = None
     mask: Any = None
     annotated_frame: Any = None
     homography: Any = None

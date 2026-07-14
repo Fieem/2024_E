@@ -27,6 +27,7 @@ class AIConfig:
 class TiltCompensationConfig:
     enabled: bool = True
     dead_zone_deg: float = 3.0
+    max_tilt_deg: float = 55.0
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ def load_control_config(path: str | Path) -> ControlConfig:
         tilt_compensation=TiltCompensationConfig(
             enabled=bool(tilt_section.get("enabled", True)),
             dead_zone_deg=float(tilt_section.get("dead_zone_deg", 3.0)),
+            max_tilt_deg=float(tilt_section.get("max_tilt_deg", 55.0)),
         ),
         pulse_config=pulse_config,
     )

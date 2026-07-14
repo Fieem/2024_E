@@ -116,6 +116,7 @@ python main.py --camera-index 0 --width 1600 --height 1200 --fps 60 --pixel-form
 - 如果白棋在阴影里容易掉成空格，可以先试着降低 `--white-norm-value-min`、降低 `--white-norm-min-piece-area-ratio`，或提高 `--white-norm-saturation-max`
 - 如果空格经常被误判成棋子，先优先提高 `--empty-red-ratio-threshold`
 - 如果已经确认“有棋子”但黑白容易分错，再分别调黑棋和白棋参数
+- 如果黑棋表面有反光而被识别成白棋，当前判定会优先保留足够明显的黑色主体；仍有误判时可适当提高 `--black-value-max`
 
 ## 调参上位机
 
@@ -285,6 +286,7 @@ BATTLE_START,W
 - `PLACE`：检查当前稳定棋盘、目标格和槽位，然后返回 4 个脉冲
   - 会读取视觉当前的 `theta_deg`
   - 只对“落子位”这 2 个脉冲做倾斜补偿
+  - 旋转补偿角度限制为 `-55° ~ +55°`，超出范围时按对应边界值处理
   - `|theta_deg| <= 3°` 时按 `0°` 处理
 - `BATTLE_START`：记录机械臂执棋颜色，进入对弈模式
 - `READY`：读取当前稳定整盘状态，若轮到机械臂，则调用 `gomoku_ai` 的 `hard` 难度求下一步，再返回 4 个脉冲
@@ -305,6 +307,9 @@ BATTLE_START,W
 - `tilt_compensation.dead_zone_deg`
   - 死区角度，默认 `3.0`
   - 当视觉输出角度在 `-3° ~ +3°` 内时，按 `0°` 处理
+- `tilt_compensation.max_tilt_deg`
+  - 旋转补偿最大角度，默认 `55.0`
+  - 视觉输出超过 `±55°` 时，按 `-55°` 或 `+55°` 进行补偿
 
 当前补偿方式：
 
