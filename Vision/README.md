@@ -245,16 +245,18 @@ python control_main.py --vision-config vision_settings.json --control-config vis
 
 串口请求报文：
 
-- `PLACE,<color>,<row>,<col>`
+- `PLACE,<color>,<piece_no>,<row>,<col>`
 - `BATTLE_START,<color>`
 - `READY`
 
-其中 `<color>` 使用单字符：`B` 表示黑棋，`W` 表示白棋。例如：
+其中 `<color>` 使用单字符：`B` 表示黑棋，`W` 表示白棋；`<piece_no>` 使用 `1~7`，第 `1` 个棋子对应配置中的数组下标 `0`。例如：
 
 ```text
-PLACE,B,3,4
+PLACE,B,3,3,4
 BATTLE_START,W
 ```
+
+PLACE 中，下位机明确指定颜色、取第几个棋子以及落子行列，因此取子不要求按顺序进行。Vision 会将 `piece_no` 转换为 `piece_no - 1` 后选择取子槽位。
 
 串口响应报文：
 
@@ -284,6 +286,8 @@ BATTLE_START,W
 控制逻辑固定为：
 
 - `PLACE`：检查当前稳定棋盘、目标格和槽位，然后返回 4 个脉冲
+  - 使用请求中的 `piece_no` 选择对应颜色的取子槽位，不要求按顺序取子
+  - 同一局中同一颜色的取子槽位不能重复使用，否则返回 `ERROR,NO_SLOT,NO SLOT`
   - 会读取视觉当前的 `theta_deg`
   - 只对“落子位”这 2 个脉冲做倾斜补偿
   - 旋转补偿角度限制为 `-55° ~ +55°`，超出范围时按对应边界值处理
@@ -297,7 +301,9 @@ BATTLE_START,W
   - 每项是一个 `[pulse1, pulse2]`
 - `board_cells[7][7]`
   - 每格是一个 `[pulse1, pulse2]`
-- 第 `n` 个该颜色棋子默认使用对应颜色的第 `n` 个取子槽位
+- PLACE 模式使用请求中的 `piece_no` 选择 `black_slots[piece_no - 1]` 或 `white_slots[piece_no - 1]`
+- PLACE 模式会记录已使用的取子槽位；棋盘从有棋子重新变为空棋盘时清空记录
+- READY 对弈模式未指定取子序号，仍按当前棋盘中该颜色棋子数量选择下一个槽位
 
 倾斜补偿配置：
 

@@ -72,11 +72,16 @@ def build_move_pulses(
     col: int,
     board_state: list[list[str]],
     *,
+    piece_index: int | None = None,
     theta_deg: float | None = None,
     dead_zone_deg: float = 3.0,
     max_tilt_deg: float = 55.0,
 ) -> tuple[int, int, int, int]:
-    slot_index = next_pick_slot(color, board_state)
+    slot_index = (
+        next_pick_slot(color, board_state)
+        if piece_index is None
+        else piece_index
+    )
     pick_p1, pick_p2 = slot_to_pulses(config, color, slot_index)
     place_p1, place_p2 = cell_to_pulses_with_tilt(
         config,

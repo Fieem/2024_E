@@ -124,6 +124,7 @@ class ModeRequest:
     color: RobotColor | None = None
     row: int | None = None
     col: int | None = None
+    piece_index: int | None = None
 
 
 @dataclass(frozen=True)

@@ -106,6 +106,11 @@ class VisionController:
     def __init__(self, control_config: ControlConfig) -> None:
         self.control_config = control_config
         self.battle_state = BattleState()
+        self._place_used_slots: dict[RobotColor, set[int]] = {
+            "BLACK": set(),
+            "WHITE": set(),
+        }
+        self._place_board_was_nonempty = False
 
     def handle_request(
         self,
@@ -133,8 +138,21 @@ class VisionController:
     ) -> ModeResponse:
         if snapshot is None:
             return self._error("NO_BOARD", "No stable board available")
-        if request.color is None or request.row is None or request.col is None:
-            return self._error("BAD_CMD", "PLACE requires color,row,col")
+        self._sync_place_slot_state(snapshot.board_state)
+        if (
+            request.color is None
+            or request.piece_index is None
+            or request.row is None
+            or request.col is None
+        ):
+            return self._error("BAD_CMD", "PLACE requires color,piece_no,row,col")
+        if not 0 <= request.piece_index < 7:
+            return self._error("NO_SLOT", f"Piece index out of range: {request.piece_index}")
+        if request.piece_index in self._place_used_slots[request.color]:
+            return self._error(
+                "NO_SLOT",
+                f"Piece slot already used: {request.piece_index + 1}",
+            )
         if not _is_in_bounds(request.row, request.col):
             return self._error("BAD_POS", f"Out of bounds: ({request.row},{request.col})")
         if snapshot.board_state[request.row][request.col] != "empty":
@@ -151,13 +169,25 @@ class VisionController:
                 request.row,
                 request.col,
                 snapshot.board_state,
+                piece_index=request.piece_index,
                 theta_deg=tilt_theta,
                 dead_zone_deg=tilt_dead_zone,
                 max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
             )
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)
+        self._place_used_slots[request.color].add(request.piece_index)
         return ModeResponse(kind="pulses", pulses4=pulses4)
+
+    def _sync_place_slot_state(self, board_state: list[list[str]]) -> None:
+        board_is_nonempty = any(
+            cell != "empty"
+            for row in board_state
+            for cell in row
+        )
+        if self._place_board_was_nonempty and not board_is_nonempty:
+            self._place_used_slots = {"BLACK": set(), "WHITE": set()}
+        self._place_board_was_nonempty = board_is_nonempty
 
     def _handle_ready(self, snapshot: VisionStableSnapshot | None) -> ModeResponse:
         if self.battle_state.mode != "battle_active" or self.battle_state.robot_color is None:

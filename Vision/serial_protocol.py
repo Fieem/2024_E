@@ -31,12 +31,22 @@ def parse_request_line(line: str) -> ModeRequest:
     command = parts[0].upper()
 
     if command == "PLACE":
-        if len(parts) != 4:
-            raise ProtocolError("BAD_CMD", "PLACE requires color,row,col")
+        if len(parts) != 5:
+            raise ProtocolError("BAD_CMD", "PLACE requires color,piece_no,row,col")
         color = _parse_color(parts[1])
-        row = _parse_int(parts[2], "row")
-        col = _parse_int(parts[3], "col")
-        return ModeRequest(kind="place", color=color, row=row, col=col)
+        piece_no = _parse_int(parts[2], "piece_no")
+        if not 1 <= piece_no <= 7:
+            raise ProtocolError("NO_SLOT", "Piece number must be 1..7")
+        piece_index = piece_no - 1
+        row = _parse_int(parts[3], "row")
+        col = _parse_int(parts[4], "col")
+        return ModeRequest(
+            kind="place",
+            color=color,
+            piece_index=piece_index,
+            row=row,
+            col=col,
+        )
 
     if command == "BATTLE_START":
         if len(parts) != 2:
