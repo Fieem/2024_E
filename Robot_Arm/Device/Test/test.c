@@ -195,7 +195,7 @@ static int test_vofa_apply_kv(const char *key, float value) {
     }
     if (test_key_equal(key, "PLACE")) {
         comm_send_place(s_cmd_color,s_cmd_num, s_cmd_row, s_cmd_col);
-        printsf(0, "PLACE %c,%u,%u", s_cmd_color,
+        printsf(0, "PLACE %c,%u,%u,%u", s_cmd_color,s_cmd_num,
                 (unsigned int)s_cmd_row, (unsigned int)s_cmd_col);
         return 1;
     }

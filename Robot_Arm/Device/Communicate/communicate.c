@@ -81,7 +81,9 @@ static void comm_pi_parse_line(const char *line)
             comm_place_p1 = atoi(a3);
             comm_place_p2 = atoi(a4);
             comm_response_ready = true;
+            printsf(0, "PULSES OK %d %d %d %d", comm_pick_p1, comm_pick_p2, comm_place_p1, comm_place_p2);
         }
+        else{printsf(0,"Pulse");}
     }
     else if (strcmp_upper(cmd, "ERROR") == 0) {
         /* ERROR,<code>,<message> */
