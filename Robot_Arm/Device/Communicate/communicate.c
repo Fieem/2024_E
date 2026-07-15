@@ -149,10 +149,10 @@ void comm_pi_poll(void)
 /* -----------------------------------------------------------
  *  发送请求给树莓派
  * ----------------------------------------------------------- */
-void comm_send_place(char color, uint8_t row, uint8_t col)
+void comm_send_place(char color, uint8_t num, uint8_t row, uint8_t col)
 {
     char buf[32];
-    int len = snprintf(buf, sizeof(buf), "PLACE,%c,%u,%u\n", color, row, col);
+    int len = snprintf(buf, sizeof(buf), "PLACE,%c,%u,%u,%u\n", color, num, row, col);
     HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)len, 100);
 }
 

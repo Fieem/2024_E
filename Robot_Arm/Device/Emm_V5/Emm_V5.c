@@ -1690,8 +1690,56 @@ void Is_Arrived(void)
     if (abs(err_yaw) < 1 && abs(err_pitch) < 1) {
         arrive_flag = true;
     }
-}
+}/**
+    * @brief  读取电机PID参数（阻塞等待应答）
+    * @param  addr   电机ID
+    * @param  kp     输出：比例系数
+    * @param  ki     输出：积分系数
+    * @param  kd     输出：微分系数
+    * @return true=成功, false=超时
+    */
+  bool Emm_V5_Get_PID_Params(uint8_t addr, uint32_t *kp, uint32_t *ki, uint32_t *kd)
+  {
+      uint32_t timeout = 10000;
 
+      can.rxFrameFlag = 0;
+      Emm_V5_Read_PID_Params(addr);   // 发送读取请求
+
+      while (--timeout)
+      {
+          if (can.rxFrameFlag)
+          {
+              can.rxFrameFlag = 0;
+
+              // 校验应答来源
+              uint8_t rx_addr = (uint8_t)(can.CAN_RxMsg.ExtId >> 8);
+              if (rx_addr != addr) continue;
+
+              // 校验功能码 == 0x21
+              if (can.rxData[0] != 0x21) continue;
+              uint8_t n = 1;
+              // 解析 Kp, Ki, Kd（大端序）
+              *kp = ((uint32_t)can.rxData[n+1] << 24)
+                  | ((uint32_t)can.rxData[n+2] << 16)
+                  | ((uint32_t)can.rxData[n+3] << 8)
+                  |  (uint32_t)can.rxData[n+4];
+
+              *ki = ((uint32_t)can.rxData[n+5] << 24)
+                  | ((uint32_t)can.rxData[n+6] << 16)
+                  | ((uint32_t)can.rxData[n+7] << 8)
+                  |  (uint32_t)can.rxData[n+8];
+
+              *kd = ((uint32_t)can.rxData[n+9] << 24)
+                  | ((uint32_t)can.rxData[n+10] << 16)
+                  | ((uint32_t)can.rxData[n+11] << 8)
+                  |  (uint32_t)can.rxData[n+12];
+
+              return true;
+          }
+        HAL_Delay(1);
+      }
+  return false;  // 超时
+  }
 /**
   * @brief  两轴同步绝对位置移动（多电机同步指令）
   * @param  x  yaw  轴目标位置（带符号脉冲数，绝对模式）
