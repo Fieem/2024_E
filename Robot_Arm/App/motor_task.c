@@ -68,14 +68,28 @@ void StartMotorTask(void *argument)
             break;
 
         /* ============================================================
-         *  PLACE_ARRIVED：释放电磁铁放子，回到 IDLE
+         *  PLACE_ARRIVED：释放电磁铁放子，触发回零
          * ============================================================ */
         case ARM_PLACE_ARRIVED:
             Magnet_OFF();                   /* 释放电磁铁放子 */
-            /* 清理标志，准备接收下一条命令 */
-            arrive_flag   = false;
-            arm_cmd.type  = CMD_NONE;
-            arm_state     = ARM_IDLE;
+            arrive_flag = false;
+            /* 触发两电机回零 */
+            Emm_V5_MMCL_Origin_Trigger_Return(1, 0, false);
+            Emm_V5_MMCL_Origin_Trigger_Return(2, 0, false);
+            Emm_V5_Multi_Motor_Cmd(0);
+            arm_state = ARM_MOVING_TO_ZERO;
+            break;
+
+        /* ============================================================
+         *  MOVING_TO_ZERO：等待回零到位后回到 IDLE
+         * ============================================================ */
+        case ARM_MOVING_TO_ZERO:
+            Is_Arrived();
+            if (arrive_flag) {
+                arrive_flag   = false;
+                arm_cmd.type  = CMD_NONE;
+                arm_state     = ARM_IDLE;
+            }
             break;
 
         default:
@@ -83,6 +97,6 @@ void StartMotorTask(void *argument)
             break;
         }
 
-        osDelay(10);   /* 10ms 一个状态机周期 */
+        osDelay(5);   /* 5ms 一个状态机周期 */
     }
 }

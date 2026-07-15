@@ -25,6 +25,7 @@ typedef enum {
     ARM_PICK_ARRIVED,   /* 到位，吸合电磁铁取子            */
     ARM_MOVING_TO_PLACE,/* 移动到放子位置                  */
     ARM_PLACE_ARRIVED,  /* 到位，释放电磁铁放子            */
+    ARM_MOVING_TO_ZERO, /* 移动回零点                     */
 } ArmState_t;
 
 /* ---- 命令结构体 ---- */
