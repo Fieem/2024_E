@@ -1820,9 +1820,10 @@ void Move_Pos(int32_t x, int32_t y)
 void Arm_Execute_Pick_Place(int32_t pick_x, int32_t pick_y,
                             int32_t place_x, int32_t place_y)
 {
-    arm_cmd.type     = CMD_EXEC;
     arm_cmd.pick_x   = pick_x;
     arm_cmd.pick_y   = pick_y;
     arm_cmd.place_x  = place_x;
     arm_cmd.place_y  = place_y;
+    /* 最后写入 type，避免 MotorTask 先看到未完整写入的命令。 */
+    arm_cmd.type     = CMD_EXEC;
 }

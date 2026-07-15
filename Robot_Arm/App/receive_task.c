@@ -25,8 +25,12 @@ void StartReceiveTask(void *argument)
         /* 收到完整 PULSES 响应 → 触发取子→放子序列 */
         if (comm_response_ready) {
             comm_response_ready = false;
-            Arm_Execute_Pick_Place(comm_pick_p1,  comm_pick_p2,
-                                   comm_place_p1, comm_place_p2);
+            if (arm_state == ARM_IDLE && arm_cmd.type == CMD_NONE) {
+                Arm_Execute_Pick_Place(comm_pick_p1,  comm_pick_p2,
+                                       comm_place_p1, comm_place_p2);
+            } else {
+                printsf(0, "ARM BUSY");
+            }
         }
     }
 }

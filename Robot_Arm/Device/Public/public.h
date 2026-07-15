@@ -21,7 +21,9 @@ typedef enum {
 /* ---- 机械臂状态机 ---- */
 typedef enum {
     ARM_IDLE = 0,       /* 空闲，等待新命令               */
+    ARM_STARTUP_ZERO,   /* 上电回零等待                   */
     ARM_MOVING_TO_PICK, /* 移动到取子位置                  */
+    ARM_MAGNET_SETTLING,/* 电磁铁吸合稳定等待             */
     ARM_PICK_ARRIVED,   /* 到位，吸合电磁铁取子            */
     ARM_MOVING_TO_PLACE,/* 移动到放子位置                  */
     ARM_PLACE_ARRIVED,  /* 到位，释放电磁铁放子            */

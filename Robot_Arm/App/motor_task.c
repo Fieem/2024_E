@@ -1,4 +1,4 @@
- //
+//
 // Created by Administrator on 2026/7/8.
 //
 
@@ -9,86 +9,90 @@
 #include "SG90/sg90.h"
 #include "Public/public.h"
 
+/* 固定等待时间，按实际机械臂运动时间调整。 */
+#define ARM_STARTUP_ZERO_DELAY_MS    2000U
+#define ARM_PICK_MOVE_DELAY_MS       5000U
+#define ARM_MAGNET_SETTLE_DELAY_MS   2000U
+#define ARM_PLACE_MOVE_DELAY_MS      5000U
+#define ARM_RETURN_ZERO_DELAY_MS     1000U
+
+static uint32_t arm_state_start_tick;
+
+static bool arm_delay_elapsed(uint32_t delay_ms)
+{
+    return (uint32_t)(HAL_GetTick() - arm_state_start_tick) >= delay_ms;
+}
+
 void StartMotorTask(void *argument)
 {
-    /* ---- 初始化 CAN 滤波器并启动接收 ---- */
+    /* ---- 初始化 CAN 滤波器并启动回零 ---- */
     USER_CAN1_Filter_Init();
     Emm_V5_Origin_Trigger_Return(1, 0, false);
     Emm_V5_Origin_Trigger_Return(2, 0, false);
 
     HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_9);
 
-    arm_state = ARM_IDLE;
+    arm_state = ARM_STARTUP_ZERO;
+    arm_state_start_tick = HAL_GetTick();
     arm_cmd.type = CMD_NONE;
 
     for (;;) {
-
         switch (arm_state) {
+        case ARM_STARTUP_ZERO:
+            /* 上电回零不再查询到位标志，固定等待后允许接收命令。 */
+            if (arm_delay_elapsed(ARM_STARTUP_ZERO_DELAY_MS)) {
+                arm_state = ARM_IDLE;
+            }
+            break;
 
-        /* ============================================================
-         *  IDLE：等待 CMD_EXEC 命令
-         * ============================================================ */
         case ARM_IDLE:
             if (arm_cmd.type == CMD_EXEC) {
-                /* 第一步：移动到取子位置 */
                 Move_Pos(arm_cmd.pick_x, arm_cmd.pick_y);
+                arm_state_start_tick = HAL_GetTick();
                 arm_state = ARM_MOVING_TO_PICK;
             }
             break;
 
-        /* ============================================================
-         *  MOVING_TO_PICK：轮询等待两电机到位（取子位置）
-         * ============================================================ */
         case ARM_MOVING_TO_PICK:
-            Is_Arrived();
-            if (arrive_flag) {
+            if (arm_delay_elapsed(ARM_PICK_MOVE_DELAY_MS)) {
                 arm_state = ARM_PICK_ARRIVED;
             }
             break;
 
-        /* ============================================================
-         *  PICK_ARRIVED：吸合电磁铁取子，发起第二步移动
-         * ============================================================ */
         case ARM_PICK_ARRIVED:
-            Magnet_ON();                    /* 吸合电磁铁取子 */
-            arrive_flag = false;
-            /* 第二步：移动到放子位置 */
-            Move_Pos(arm_cmd.place_x, arm_cmd.place_y);
-            arm_state = ARM_MOVING_TO_PLACE;
+            Magnet_ON();
+            arm_state_start_tick = HAL_GetTick();
+            arm_state = ARM_MAGNET_SETTLING;
             break;
 
-        /* ============================================================
-         *  MOVING_TO_PLACE：轮询等待两电机到位（放子位置）
-         * ============================================================ */
+        case ARM_MAGNET_SETTLING:
+            if (arm_delay_elapsed(ARM_MAGNET_SETTLE_DELAY_MS)) {
+                Move_Pos(arm_cmd.place_x, arm_cmd.place_y);
+                arm_state_start_tick = HAL_GetTick();
+                arm_state = ARM_MOVING_TO_PLACE;
+            }
+            break;
+
         case ARM_MOVING_TO_PLACE:
-            Is_Arrived();
-            if (arrive_flag) {
+            if (arm_delay_elapsed(ARM_PLACE_MOVE_DELAY_MS)) {
                 arm_state = ARM_PLACE_ARRIVED;
             }
             break;
 
-        /* ============================================================
-         *  PLACE_ARRIVED：释放电磁铁放子，触发回零
-         * ============================================================ */
         case ARM_PLACE_ARRIVED:
-            Magnet_OFF();                   /* 释放电磁铁放子 */
-            arrive_flag = false;
-            /* 触发两电机回零 */
+            Magnet_OFF();
+            /* 释放棋子后回到原点。 */
             Emm_V5_MMCL_Origin_Trigger_Return(1, 0, false);
             Emm_V5_MMCL_Origin_Trigger_Return(2, 0, false);
             Emm_V5_Multi_Motor_Cmd(0);
+            arm_state_start_tick = HAL_GetTick();
             arm_state = ARM_MOVING_TO_ZERO;
             break;
 
-        /* ============================================================
-         *  MOVING_TO_ZERO：等待回零到位后回到 IDLE
-         * ============================================================ */
         case ARM_MOVING_TO_ZERO:
-            Is_Arrived();
-            if (arrive_flag) {
-                arrive_flag   = false;
-                arm_cmd.type  = CMD_NONE;
-                arm_state     = ARM_IDLE;
+            if (arm_delay_elapsed(ARM_RETURN_ZERO_DELAY_MS)) {
+                arm_cmd.type = CMD_NONE;
+                arm_state = ARM_IDLE;
             }
             break;
 
@@ -97,6 +101,6 @@ void StartMotorTask(void *argument)
             break;
         }
 
-        osDelay(5);   /* 5ms 一个状态机周期 */
+        osDelay(5);
     }
 }
