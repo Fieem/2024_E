@@ -1687,11 +1687,60 @@ void Is_Arrived(void)
 {
     int8_t err_yaw   = (int8_t)Emm_V5_Get_PosError(1);
     int8_t err_pitch = (int8_t)Emm_V5_Get_PosError(2);
-    if (abs(err_yaw) < 1 && abs(err_pitch) < 1) {
+    if (abs(err_yaw) < 10 && abs(err_pitch) < 10) {
         arrive_flag = true;
     }
 }
+/**
+    * @brief  读取电机PID参数（阻塞等待应答）
+    * @param  addr   电机ID
+    * @param  kp     输出：比例系数
+    * @param  ki     输出：积分系数
+    * @param  kd     输出：微分系数
+    * @return true=成功, false=超时
+    */
+  bool Emm_V5_Get_PID_Params(uint8_t addr, uint32_t *kp, uint32_t *ki, uint32_t *kd)
+  {
+      uint32_t timeout = 10000;
 
+      can.rxFrameFlag = 0;
+      Emm_V5_Read_PID_Params(addr);   // 发送读取请求
+
+      while (--timeout)
+      {
+          if (can.rxFrameFlag)
+          {
+              can.rxFrameFlag = 0;
+
+              // 校验应答来源
+              uint8_t rx_addr = (uint8_t)(can.CAN_RxMsg.ExtId >> 8);
+              if (rx_addr != addr) continue;
+
+              // 校验功能码 == 0x21
+              if (can.rxData[0] != 0x21) continue;
+              uint8_t n = 1;
+              // 解析 Kp, Ki, Kd（大端序）
+              *kp = ((uint32_t)can.rxData[n+1] << 24)
+                  | ((uint32_t)can.rxData[n+2] << 16)
+                  | ((uint32_t)can.rxData[n+3] << 8)
+                  |  (uint32_t)can.rxData[n+4];
+
+              *ki = ((uint32_t)can.rxData[n+5] << 24)
+                  | ((uint32_t)can.rxData[n+6] << 16)
+                  | ((uint32_t)can.rxData[n+7] << 8)
+                  |  (uint32_t)can.rxData[n+8];
+
+              *kd = ((uint32_t)can.rxData[n+9] << 24)
+                  | ((uint32_t)can.rxData[n+10] << 16)
+                  | ((uint32_t)can.rxData[n+11] << 8)
+                  |  (uint32_t)can.rxData[n+12];
+
+              return true;
+          }
+        HAL_Delay(1);
+      }
+  return false;  // 超时
+  }
 /**
   * @brief  两轴同步绝对位置移动（多电机同步指令）
   * @param  x  yaw  轴目标位置（带符号脉冲数，绝对模式）
@@ -1709,25 +1758,25 @@ void Move_Pos(int32_t x, int32_t y)
 
     /* ---- 按行程比例分配速度，使两轴基本同时到达 ---- */
     uint32_t max_delta   = (abs(x - last_pos_yaw) + abs(y - last_pos_pitch));
-    uint16_t base_speed  = 500U;    /* 合成速度上限（RPM），按需调整 */
+    uint16_t base_speed  = 50U;    /* 合成速度上限（RPM），按需调整 */
     uint8_t  base_acc    = 10U;
 
-    uint16_t vel_yaw   = 200U;      /* 默认值 */
-    uint16_t vel_pitch = 200U;
+    uint16_t vel_yaw   = 20U;      /* 默认值 */
+    uint16_t vel_pitch = 20U;
 
-    if (max_delta > 0U) {
-        vel_yaw   = (uint16_t)((uint64_t)base_speed
-                     * (uint64_t)abs(x - last_pos_yaw) / max_delta);
-        vel_pitch = (uint16_t)((uint64_t)base_speed
-                     * (uint64_t)abs(y - last_pos_pitch) / max_delta);
-    }
-    /* 限制最低速度，防止电机堵转 */
-    if (vel_yaw   < 10U) { vel_yaw   = 10U; }
-    if (vel_pitch < 10U) { vel_pitch = 10U; }
+    // if (max_delta > 0U) {
+    //     vel_yaw   = (uint16_t)((uint64_t)base_speed
+    //                  * (uint64_t)abs(x - last_pos_yaw) / max_delta);
+    //     vel_pitch = (uint16_t)((uint64_t)base_speed
+    //                  * (uint64_t)abs(y - last_pos_pitch) / max_delta);
+    // }
+    // /* 限制最低速度，防止电机堵转 */
+    // if (vel_yaw   < 10U) { vel_yaw   = 10U; }
+    // if (vel_pitch < 10U) { vel_pitch = 10U; }
 
     /* 加载到多电机同步指令队列，snF=true 等待同步触发 */
-    Emm_V5_MMCL_Pos_Control(1, dir_yaw,   vel_yaw,   base_acc, target_yaw,   true, true);
-    Emm_V5_MMCL_Pos_Control(2, dir_pitch, vel_pitch, base_acc, target_pitch, true, true);
+    Emm_V5_MMCL_Pos_Control(1, dir_yaw,   50,   base_acc, target_yaw,   true, true);
+    Emm_V5_MMCL_Pos_Control(2, dir_pitch, 50, base_acc, target_pitch, true, true);
     Emm_V5_Multi_Motor_Cmd(0);   /* 广播触发，两个电机同时开始运动 */
 
     last_pos_yaw   = x;

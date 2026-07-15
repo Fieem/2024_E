@@ -218,7 +218,7 @@ void Emm_V5_MMCL_Read_Sys_Params(uint8_t addr, SysParams_t s);
 extern int32_t Emm_V5_Get_Pulse(uint8_t addr);
 extern uint32_t Emm_V5_Get_Position(uint8_t addr);
 extern int32_t Emm_V5_Get_PosError(uint8_t addr);
-
+extern  bool Emm_V5_Get_PID_Params(uint8_t addr, uint32_t *kp, uint32_t *ki, uint32_t *kd);
 void Is_Arrived();
 void Move_Pos(int32_t x, int32_t y);
 void Arm_Execute_Pick_Place(int32_t pick_x, int32_t pick_y, int32_t place_x, int32_t place_y);

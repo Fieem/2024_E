@@ -117,11 +117,12 @@ static int test_key_equal(const char *a, const char *b)
 
 static int test_vofa_apply_kv(const char *key, float value) {
     if (test_key_equal(key, "ZERO")) {
-        Emm_V5_Origin_Set_O(1, 1);
-        Emm_V5_Origin_Set_O(2, 1);      //设置零点
 
         Emm_V5_MMCL_En_Control(1, true, false);
         Emm_V5_MMCL_En_Control(2, true, false);
+        Emm_V5_Multi_Motor_Cmd(0);   // 广播触发，两个电机同时开始
+        Emm_V5_Origin_Trigger_Return(1, 0, false);
+        Emm_V5_Origin_Trigger_Return(2, 0, false);
         Emm_V5_Multi_Motor_Cmd(0);   // 广播触发，两个电机同时开始
         last_pos_pitch = 0;
         last_pos_yaw   = 0;
@@ -130,6 +131,9 @@ static int test_vofa_apply_kv(const char *key, float value) {
     }
     if (test_key_equal(key, "ON")) {
         Magnet_ON();
+        printsf(0,"ON");
+        // Emm_V5_Modify_PID_Params(1,true,18000,0,1024000);
+        // Emm_V5_Modify_PID_Params(2,true,18000,0,102400);
         printsf(0,"ON");
         return 1;
     }
@@ -156,20 +160,27 @@ static int test_vofa_apply_kv(const char *key, float value) {
         return 1;
     }
     if (test_key_equal(key, "TEST")) {
-        Move_Pos(800,800);
-        printsf(0,"TEST");
+        int32_t pulse1 = Emm_V5_Get_Pulse(1);   // yaw 轴当前脉冲
+        int32_t pulse2 = Emm_V5_Get_Pulse(2);   // pitch 轴当前脉冲
+        printsf(0, "P1=%ld P2=%ld", pulse1, pulse2);
         return 1;
     }
 
     /* ---- 树莓派协议调试：变量预设 + 触发发送 ---- */
     /* 静态变量，保存屏幕设定的参数 */
     static char    s_cmd_color = 'W';
+    static uint8_t s_cmd_num   = 1;
     static uint8_t s_cmd_row   = 1;
     static uint8_t s_cmd_col   = 1;
 
     if (test_key_equal(key, "COLOR")) {
         s_cmd_color = ((int)value == 0) ? 'B' : 'W';
         printsf(0, "COLOR=%c", s_cmd_color);
+        return 1;
+    }
+    if (test_key_equal(key, "NUM")) {
+        s_cmd_num = (uint8_t)value;
+        printsf(0, "NUM=%u", (unsigned int)s_cmd_num);
         return 1;
     }
     if (test_key_equal(key, "POSR")) {
@@ -183,8 +194,8 @@ static int test_vofa_apply_kv(const char *key, float value) {
         return 1;
     }
     if (test_key_equal(key, "PLACE")) {
-        comm_send_place(s_cmd_color, s_cmd_row, s_cmd_col);
-        printsf(0, "PLACE %c,%u,%u", s_cmd_color,
+        comm_send_place(s_cmd_color,s_cmd_num, s_cmd_row, s_cmd_col);
+        printsf(0, "PLACE %c,%u,%u,%u", s_cmd_color,s_cmd_num,
                 (unsigned int)s_cmd_row, (unsigned int)s_cmd_col);
         return 1;
     }
@@ -303,6 +314,7 @@ void test_vofa_feed_byte(uint8_t byte)
             s_vofa_frame_buf[s_vofa_frame_len] = '\0';
             test_vofa_parse_frame(s_vofa_frame_buf);
             s_vofa_frame_len = 0U;
+            memset(s_vofa_frame_buf, 0, sizeof(s_vofa_frame_buf));
         }
         return;
     }
@@ -316,6 +328,7 @@ void test_vofa_feed_byte(uint8_t byte)
     {
         /* 缓冲区溢出，丢弃当前帧等待下一个分隔符 */
         s_vofa_frame_len = 0U;
+        memset(s_vofa_frame_buf, 0, sizeof(s_vofa_frame_buf));
     }
 }
 

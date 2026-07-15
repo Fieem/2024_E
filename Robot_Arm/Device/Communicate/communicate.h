@@ -26,7 +26,7 @@ void comm_pi_poll(void);
 void comm_pi_ring_push(uint8_t byte);
 
 /* ---- 发送请求给树莓派 ---- */
-void comm_send_place(char color, uint8_t row, uint8_t col);
+void comm_send_place(char color, uint8_t num, uint8_t row, uint8_t col);
 void comm_send_battle_start(char color);
 void comm_send_ready(void);
 
