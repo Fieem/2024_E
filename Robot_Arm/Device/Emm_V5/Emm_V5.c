@@ -1678,16 +1678,43 @@ uint32_t Emm_V5_Get_Position(uint8_t addr)
   }
 
 /**
+  * @brief  读取电机到位标志（Prf_TF）
+  * @param  addr  电机ID
+  * @return true=已到达目标位置, false=未到达或超时
+  * @note   读取 S_FLAG(0x3A)，rxData[1] bit1(0x02)=Prf_TF，1=到位
+  */
+bool Emm_V5_Is_PosReached(uint8_t addr)
+{
+    uint32_t timeout = 5;
+
+    can.rxFrameFlag = 0;
+    Emm_V5_Read_Sys_Params(addr, S_FLAG);   // 请求读取 S_FLAG(0x3A)
+
+    while (--timeout) {
+        if (can.rxFrameFlag) {
+            can.rxFrameFlag = 0;
+
+            uint8_t rx_addr = (uint8_t)(can.CAN_RxMsg.ExtId >> 8);
+            if (rx_addr != addr) continue;
+            if (can.rxData[0] != 0x3A) continue;   // 功能码必须为 0x3A
+
+            // rxData[1]=状态标志字节, bit1(0x02)=Prf_TF（到位标志）
+            return (can.rxData[1] & 0x02) != 0;
+        }
+        HAL_Delay(1);
+    }
+    return false;  // 超时：认为未到位
+}
+
+/**
   * @brief  非阻塞到位判断（单次调用耗时 < 10ms）
   * @note   在 MotorTask 的每个循环中调用一次。
-  *         查询两个电机的 S_PERR，误差都 < 1 脉冲时置 arrive_flag。
+  *         查询两个电机的 S_FLAG Prf_TF 到位标志。
   *         CAN 无应答则静默跳过，下一次循环重试。
   */
 void Is_Arrived(void)
 {
-    int8_t err_yaw   = (int8_t)Emm_V5_Get_PosError(1);
-    int8_t err_pitch = (int8_t)Emm_V5_Get_PosError(2);
-    if (abs(err_yaw) < 10 && abs(err_pitch) < 10) {
+    if (Emm_V5_Is_PosReached(1) && Emm_V5_Is_PosReached(2)) {
         arrive_flag = true;
     }
 }
