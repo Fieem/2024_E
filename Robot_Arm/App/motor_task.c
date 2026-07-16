@@ -12,7 +12,9 @@
 /* 固定等待时间，按实际机械臂运动时间调整。 */
 #define ARM_STARTUP_ZERO_DELAY_MS    2000U
 #define ARM_PICK_MOVE_DELAY_MS       6000U
+#define ARM_SERVO_MOVE_DELAY_MS       1000U
 #define ARM_MAGNET_SETTLE_DELAY_MS   1000U
+#define ARM_MAGNET_RELEASE_DELAY_MS   300U
 #define ARM_PLACE_MOVE_DELAY_MS      5000U
 #define ARM_RETURN_ZERO_DELAY_MS     1000U
 
@@ -60,9 +62,19 @@ void StartMotorTask(void *argument)
             break;
 
         case ARM_PICK_ARRIVED:
-            Magnet_ON();
+            /* 取子位置到位后先降下舵机。 */
+            SG90_SetAngle(Low_Angle);
             arm_state_start_tick = HAL_GetTick();
-            arm_state = ARM_MAGNET_SETTLING;
+            arm_state = ARM_SERVO_LOWERING;
+            break;
+
+        case ARM_SERVO_LOWERING:
+            if (arm_delay_elapsed(ARM_SERVO_MOVE_DELAY_MS)) {
+                /* 舵机下降到位后再吸合电磁铁。 */
+                Magnet_ON();
+                arm_state_start_tick = HAL_GetTick();
+                arm_state = ARM_MAGNET_SETTLING;
+            }
             break;
 
         case ARM_MAGNET_SETTLING:
@@ -80,13 +92,31 @@ void StartMotorTask(void *argument)
             break;
 
         case ARM_PLACE_ARRIVED:
+            /* 到达下棋位置后先断开电磁铁。 */
             Magnet_OFF();
-            /* 释放棋子后回到原点。 */
-            Emm_V5_MMCL_Origin_Trigger_Return(1, 0, false);
-            Emm_V5_MMCL_Origin_Trigger_Return(2, 0, false);
-            Emm_V5_Multi_Motor_Cmd(0);
             arm_state_start_tick = HAL_GetTick();
-            arm_state = ARM_MOVING_TO_ZERO;
+            arm_state = ARM_MAGNET_RELEASING;
+            break;
+
+        case ARM_MAGNET_RELEASING:
+            if (arm_delay_elapsed(ARM_MAGNET_RELEASE_DELAY_MS)) {
+                /* 确认棋子释放后再升高舵机。 */
+                SG90_SetAngle(High_Angle);
+                arm_state_start_tick = HAL_GetTick();
+                arm_state = ARM_SERVO_RAISING;
+            }
+            break;
+
+        case ARM_SERVO_RAISING:
+            if (arm_delay_elapsed(ARM_SERVO_MOVE_DELAY_MS)) {
+                /* 舵机升起后再触发两轴回零。 */
+                /* 释放棋子后回到原点。 */
+                Emm_V5_MMCL_Origin_Trigger_Return(1, 0, false);
+                Emm_V5_MMCL_Origin_Trigger_Return(2, 0, false);
+                Emm_V5_Multi_Motor_Cmd(0);
+                arm_state_start_tick = HAL_GetTick();
+                arm_state = ARM_MOVING_TO_ZERO;
+            }
             break;
 
         case ARM_MOVING_TO_ZERO:
