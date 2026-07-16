@@ -12,11 +12,11 @@
 /* 固定等待时间，按实际机械臂运动时间调整。 */
 #define ARM_STARTUP_ZERO_DELAY_MS    2000U
 #define ARM_PICK_MOVE_DELAY_MS       6500U
-#define ARM_SERVO_MOVE_DELAY_MS       1000U
-#define ARM_MAGNET_SETTLE_DELAY_MS   1000U
+#define ARM_SERVO_MOVE_DELAY_MS       500U
+#define ARM_MAGNET_SETTLE_DELAY_MS   500U
 #define ARM_MAGNET_RELEASE_DELAY_MS   300U
-#define ARM_PLACE_MOVE_DELAY_MS      5000U
-#define ARM_RETURN_ZERO_DELAY_MS     1000U
+#define ARM_PLACE_MOVE_DELAY_MS      4500U
+#define ARM_RETURN_ZERO_DELAY_MS     500U
 
 static uint32_t arm_state_start_tick;
 
