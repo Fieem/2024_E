@@ -17,8 +17,8 @@
 ***	180° = 2.5ms 脉宽 → CCR = 2500
 **********************************************************/
 
-#define Low_Angle   30
-#define High_Angle   20
+#define Low_Angle   180
+#define High_Angle   0
 /**
   * @brief  SG90 初始化，开启 PWM 输出
   * @param  无
