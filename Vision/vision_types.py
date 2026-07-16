@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 CellState = Literal["empty", "black", "white"]
-ModeKind = Literal["place", "battle_start", "ready"]
+ModeKind = Literal["place", "battle_start", "ready", "new"]
 ResponseKind = Literal["pulses", "move", "error", "busy"]
 RobotColor = Literal["BLACK", "WHITE"]
 

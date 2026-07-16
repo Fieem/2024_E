@@ -59,6 +59,11 @@ def parse_request_line(line: str) -> ModeRequest:
             raise ProtocolError("BAD_CMD", "READY does not accept parameters")
         return ModeRequest(kind="ready")
 
+    if command == "NEW":
+        if len(parts) != 1:
+            raise ProtocolError("BAD_CMD", "NEW does not accept parameters")
+        return ModeRequest(kind="new")
+
     raise ProtocolError("BAD_CMD", f"Unknown command: {command}")
 
 
@@ -119,4 +124,6 @@ def _compact_busy_message(message: str | None) -> str:
         return "WHITE WIN"
     if normalized == "game_over_draw":
         return "DRAW"
+    if normalized == "place_reset":
+        return "RESET"
     return "BUSY"

@@ -14,7 +14,11 @@ from control_config import (
     ensure_default_control_config,
     load_control_config,
 )
-from pulse_planner import PulsePlanningError, build_move_pulses
+from pulse_planner import (
+    PulsePlanningError,
+    build_move_pulses,
+    cell_to_pulses_with_tilt,
+)
 from serial_protocol import ProtocolError, format_response_line, parse_request_line
 from vision_config import DEFAULT_CONFIG_PATH
 from vision_runtime import VisionRuntime, build_runtime_configs, show_runtime_windows
@@ -46,14 +50,17 @@ def parse_args() -> argparse.Namespace:
 class BattleState:
     mode: str = "idle"
     robot_color: RobotColor | None = None
+    expected_board_state: list[list[str]] | None = None
 
     def reset(self) -> None:
         self.mode = "idle"
         self.robot_color = None
+        self.expected_board_state = None
 
     def start(self, robot_color: RobotColor) -> None:
         self.mode = "battle_active"
         self.robot_color = robot_color
+        self.expected_board_state = None
 
 
 class SerialTextTransport:
@@ -110,6 +117,7 @@ class VisionController:
             "BLACK": set(),
             "WHITE": set(),
         }
+        self._place_used_targets: set[tuple[int, int]] = set()
         self._place_board_was_nonempty = False
 
     def handle_request(
@@ -122,6 +130,10 @@ class VisionController:
                 return self._error("BAD_COLOR", "Missing battle color")
             self.battle_state.start(request.color)
             return ModeResponse(kind="busy", message=f"battle_active_{request.color}")
+
+        if request.kind == "new":
+            self._reset_place_state()
+            return ModeResponse(kind="busy", message="place_reset")
 
         if request.kind == "place":
             return self._handle_place(request, snapshot)
@@ -155,6 +167,9 @@ class VisionController:
             )
         if not _is_in_bounds(request.row, request.col):
             return self._error("BAD_POS", f"Out of bounds: ({request.row},{request.col})")
+        target = (request.row, request.col)
+        if target in self._place_used_targets:
+            return self._error("BAD_POS", f"Target already reserved: {target}")
         if snapshot.board_state[request.row][request.col] != "empty":
             return self._error("BAD_POS", f"Target occupied: ({request.row},{request.col})")
         try:
@@ -177,6 +192,7 @@ class VisionController:
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)
         self._place_used_slots[request.color].add(request.piece_index)
+        self._place_used_targets.add(target)
         return ModeResponse(kind="pulses", pulses4=pulses4)
 
     def _sync_place_slot_state(self, board_state: list[list[str]]) -> None:
@@ -186,8 +202,12 @@ class VisionController:
             for cell in row
         )
         if self._place_board_was_nonempty and not board_is_nonempty:
-            self._place_used_slots = {"BLACK": set(), "WHITE": set()}
+            self._reset_place_state()
         self._place_board_was_nonempty = board_is_nonempty
+
+    def _reset_place_state(self) -> None:
+        self._place_used_slots = {"BLACK": set(), "WHITE": set()}
+        self._place_used_targets = set()
 
     def _handle_ready(self, snapshot: VisionStableSnapshot | None) -> ModeResponse:
         if self.battle_state.mode != "battle_active" or self.battle_state.robot_color is None:
@@ -198,6 +218,26 @@ class VisionController:
         legality_error = _check_board_legality(snapshot.board_state)
         if legality_error is not None:
             return legality_error
+
+        expected_board = self.battle_state.expected_board_state
+        if expected_board is not None and expected_board != snapshot.board_state:
+            human_color = "WHITE" if self.battle_state.robot_color == "BLACK" else "BLACK"
+            correction = self._build_piece_correction(
+                expected_board,
+                snapshot.board_state,
+                snapshot.theta_deg,
+            )
+            if correction is not None:
+                return correction
+            if not _is_single_human_placement(
+                expected_board,
+                snapshot.board_state,
+                human_color,
+            ):
+                return self._error(
+                    "ILLEGAL_BOARD",
+                    "Unexpected board change",
+                )
 
         game_over_message = _check_game_over(snapshot.board_state)
         if game_over_message is not None:
@@ -240,7 +280,55 @@ class VisionController:
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)
 
+        expected_after_move = _copy_board_state(snapshot.board_state)
+        expected_after_move[row][col] = _robot_color_to_cell_state(
+            self.battle_state.robot_color,
+        )
+        self.battle_state.expected_board_state = expected_after_move
+
         return ModeResponse(kind="move", row=row, col=col, pulses4=pulses4)
+
+    def _build_piece_correction(
+        self,
+        expected_board: list[list[str]],
+        current_board: list[list[str]],
+        theta_deg: float | None,
+    ) -> ModeResponse | None:
+        relocation = _find_relocated_piece(expected_board, current_board)
+        if relocation is None:
+            return None
+
+        source_row, source_col, target_row, target_col = relocation
+        tilt_theta = None
+        tilt_dead_zone = 0.0
+        if self.control_config.tilt_compensation.enabled:
+            tilt_theta = theta_deg
+            tilt_dead_zone = self.control_config.tilt_compensation.dead_zone_deg
+
+        try:
+            pick_p1, pick_p2 = cell_to_pulses_with_tilt(
+                self.control_config.pulse_config,
+                target_row,
+                target_col,
+                tilt_theta,
+                dead_zone_deg=tilt_dead_zone,
+                max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
+            )
+            place_p1, place_p2 = cell_to_pulses_with_tilt(
+                self.control_config.pulse_config,
+                source_row,
+                source_col,
+                tilt_theta,
+                dead_zone_deg=tilt_dead_zone,
+                max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
+            )
+        except PulsePlanningError as exc:
+            return self._error(exc.code, exc.message)
+
+        return ModeResponse(
+            kind="pulses",
+            pulses4=(pick_p1, pick_p2, place_p1, place_p2),
+        )
 
     @staticmethod
     def _error(code: str, message: str) -> ModeResponse:
@@ -314,6 +402,55 @@ def main() -> None:
         runtime.release()
         if not args.headless:
             cv2.destroyAllWindows()
+
+
+def _copy_board_state(board_state: list[list[str]]) -> list[list[str]]:
+    return [list(row) for row in board_state]
+
+
+def _robot_color_to_cell_state(robot_color: RobotColor) -> str:
+    return "black" if robot_color == "BLACK" else "white"
+
+
+def _find_relocated_piece(
+    expected_board: list[list[str]],
+    current_board: list[list[str]],
+) -> tuple[int, int, int, int] | None:
+    removed: list[tuple[int, int, str]] = []
+    added: list[tuple[int, int, str]] = []
+
+    for row in range(7):
+        for col in range(7):
+            expected = expected_board[row][col]
+            current = current_board[row][col]
+            if expected == current:
+                continue
+            if expected != "empty" and current == "empty":
+                removed.append((row, col, expected))
+            elif expected == "empty" and current != "empty":
+                added.append((row, col, current))
+            else:
+                return None
+
+    if len(removed) != 1 or len(added) != 1:
+        return None
+    return removed[0][0], removed[0][1], added[0][0], added[0][1]
+
+
+def _is_single_human_placement(
+    expected_board: list[list[str]],
+    current_board: list[list[str]],
+    human_color: RobotColor,
+) -> bool:
+    human_state = _robot_color_to_cell_state(human_color)
+    changes = []
+    for row in range(7):
+        for col in range(7):
+            expected = expected_board[row][col]
+            current = current_board[row][col]
+            if expected != current:
+                changes.append((expected, current))
+    return len(changes) == 1 and changes[0] == ("empty", human_state)
 
 
 def _is_in_bounds(row: int, col: int) -> bool:

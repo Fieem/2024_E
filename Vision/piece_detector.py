@@ -21,10 +21,12 @@ class PieceDetectorConfig:
     black_value_max: int = 70
     black_saturation_min: int = 0
     black_saturation_max: int = 255
-    white_value_min: int = 170
+    white_value_min: int = 155
     white_saturation_max: int = 80
-    white_norm_value_min: int = 150
+    white_norm_value_min: int = 135
     white_norm_saturation_max: int = 140
+    white_norm_black_dominance_ratio: float = 1.15
+    white_norm_black_margin_ratio: float = 0.02
     empty_red_ratio_threshold: float = 0.45
 
 
@@ -189,18 +191,25 @@ class PieceDetector:
             )
 
         # A specular highlight on a black piece can satisfy the relaxed white
-        # rule. Require raw white evidence to clearly dominate black evidence
-        # before allowing a white result, and reserve normalized evidence for
-        # cells without a convincing black component.
+        # rule. Require raw or normalized white evidence to clearly dominate
+        # black evidence before allowing a white result. The normalized path
+        # is what allows a slightly dark white piece to be rescued.
         black_present = black_ratio >= self.config.min_piece_area_ratio
         white_dominant = white_ratio >= black_ratio + 0.05
-        strong_white = white_dominant and (
-            white_ratio >= self.config.white_min_piece_area_ratio
-            or (
-                white_norm_ratio >= self.config.white_norm_min_piece_area_ratio
-                and not black_present
+        white_norm_dominant = (
+            white_norm_ratio >= self.config.white_norm_min_piece_area_ratio
+            and white_norm_ratio
+            >= max(
+                black_ratio * self.config.white_norm_black_dominance_ratio,
+                black_ratio + self.config.white_norm_black_margin_ratio,
             )
+            and white_norm_center_ratio >= self.config.white_center_ratio_min
+            and normalized_center_value_mean >= self.config.white_norm_value_min
         )
+        strong_white = (
+            white_dominant
+            and white_ratio >= self.config.white_min_piece_area_ratio
+        ) or white_norm_dominant
         relaxed_white = (
             not black_present
             and effective_white_ratio >= min(
@@ -221,6 +230,7 @@ class PieceDetector:
         diagnostics["black_present"] = black_present
         diagnostics["white_present"] = white_present
         diagnostics["white_dominant"] = white_dominant
+        diagnostics["white_norm_dominant"] = white_norm_dominant
 
         if strong_white or relaxed_white:
             confidence = min(
