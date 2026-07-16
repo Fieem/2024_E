@@ -188,6 +188,9 @@ class VisionController:
                 theta_deg=tilt_theta,
                 dead_zone_deg=tilt_dead_zone,
                 max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
+                max_extrapolation_cells=(
+                    self.control_config.tilt_compensation.max_extrapolation_cells
+                ),
             )
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)
@@ -269,6 +272,12 @@ class VisionController:
         if not _is_in_bounds(row, col) or snapshot.board_state[row][col] != "empty":
             return self._error("AI_FAIL", f"AI returned illegal move: ({row},{col})")
 
+        tilt_theta = None
+        tilt_dead_zone = 0.0
+        if self.control_config.tilt_compensation.enabled:
+            tilt_theta = snapshot.theta_deg
+            tilt_dead_zone = self.control_config.tilt_compensation.dead_zone_deg
+
         try:
             pulses4 = build_move_pulses(
                 self.control_config.pulse_config,
@@ -276,6 +285,12 @@ class VisionController:
                 row,
                 col,
                 snapshot.board_state,
+                theta_deg=tilt_theta,
+                dead_zone_deg=tilt_dead_zone,
+                max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
+                max_extrapolation_cells=(
+                    self.control_config.tilt_compensation.max_extrapolation_cells
+                ),
             )
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)
@@ -313,6 +328,9 @@ class VisionController:
                 tilt_theta,
                 dead_zone_deg=tilt_dead_zone,
                 max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
+                max_extrapolation_cells=(
+                    self.control_config.tilt_compensation.max_extrapolation_cells
+                ),
             )
             place_p1, place_p2 = cell_to_pulses_with_tilt(
                 self.control_config.pulse_config,
@@ -321,6 +339,9 @@ class VisionController:
                 tilt_theta,
                 dead_zone_deg=tilt_dead_zone,
                 max_tilt_deg=self.control_config.tilt_compensation.max_tilt_deg,
+                max_extrapolation_cells=(
+                    self.control_config.tilt_compensation.max_extrapolation_cells
+                ),
             )
         except PulsePlanningError as exc:
             return self._error(exc.code, exc.message)

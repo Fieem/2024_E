@@ -35,6 +35,7 @@ def cell_to_pulses_with_tilt(
     *,
     dead_zone_deg: float = 3.0,
     max_tilt_deg: float = 55.0,
+    max_extrapolation_cells: float = 1.25,
 ) -> tuple[int, int]:
     if row < 0 or row >= 7 or col < 0 or col >= 7:
         raise PulsePlanningError("BAD_POS", f"Board cell out of range: ({row},{col})")
@@ -55,7 +56,12 @@ def cell_to_pulses_with_tilt(
     rotated_y = x * math.sin(radians) + y * math.cos(radians)
     sample_col = center + rotated_x
     sample_row = center + rotated_y
-    return _interpolate_board_pulses(config.board_cells, sample_row, sample_col)
+    return _interpolate_board_pulses(
+        config.board_cells,
+        sample_row,
+        sample_col,
+        max_extrapolation_cells=max_extrapolation_cells,
+    )
 
 
 def slot_to_pulses(config: PulseConfig, color: RobotColor, slot_index: int) -> tuple[int, int]:
@@ -76,6 +82,7 @@ def build_move_pulses(
     theta_deg: float | None = None,
     dead_zone_deg: float = 3.0,
     max_tilt_deg: float = 55.0,
+    max_extrapolation_cells: float = 1.25,
 ) -> tuple[int, int, int, int]:
     slot_index = (
         next_pick_slot(color, board_state)
@@ -90,6 +97,7 @@ def build_move_pulses(
         theta_deg,
         dead_zone_deg=dead_zone_deg,
         max_tilt_deg=max_tilt_deg,
+        max_extrapolation_cells=max_extrapolation_cells,
     )
     return pick_p1, pick_p2, place_p1, place_p2
 
@@ -117,16 +125,36 @@ def _interpolate_board_pulses(
     board_cells: list[list[tuple[int, int]]],
     row_f: float,
     col_f: float,
+    *,
+    max_extrapolation_cells: float = 1.25,
 ) -> tuple[int, int]:
-    row_f = min(max(row_f, 0.0), 6.0)
-    col_f = min(max(col_f, 0.0), 6.0)
+    """Sample the pulse surface with bilinear interpolation/extrapolation.
 
-    row0 = int(math.floor(row_f))
-    col0 = int(math.floor(col_f))
-    row1 = min(row0 + 1, 6)
-    col1 = min(col0 + 1, 6)
-    dy = row_f - row0
-    dx = col_f - col0
+    Interior samples use the usual four-cell bilinear interpolation.  When a
+    sample is just outside the calibrated table, the first/last two rows or
+    columns are extended using their boundary slope.  Extrapolation is
+    bounded because a large extrapolation is not supported by calibration
+    data and can produce unsafe arm targets.
+    """
+    if len(board_cells) < 2 or any(len(row) < 2 for row in board_cells):
+        raise PulsePlanningError(
+            "BAD_CONFIG",
+            "board_cells must contain at least a 2x2 pulse table",
+        )
+
+    max_extrapolation = max(0.0, float(max_extrapolation_cells))
+    row0, row1, dy = _axis_segment(
+        row_f,
+        len(board_cells),
+        max_extrapolation,
+        axis_name="row",
+    )
+    col0, col1, dx = _axis_segment(
+        col_f,
+        len(board_cells[0]),
+        max_extrapolation,
+        axis_name="col",
+    )
 
     p00 = board_cells[row0][col0]
     p01 = board_cells[row0][col1]
@@ -136,6 +164,51 @@ def _interpolate_board_pulses(
     pulse1 = _bilinear(p00[0], p01[0], p10[0], p11[0], dx, dy)
     pulse2 = _bilinear(p00[1], p01[1], p10[1], p11[1], dx, dy)
     return int(round(pulse1)), int(round(pulse2))
+
+
+def _axis_segment(
+    value: float,
+    size: int,
+    max_extrapolation: float,
+    *,
+    axis_name: str,
+) -> tuple[int, int, float]:
+    """Return two neighboring indices and the interpolation parameter.
+
+    For ``value < 0`` the segment [0, 1] is extended with a negative
+    parameter.  For ``value > size - 1`` the segment [size - 2, size - 1]
+    is extended with a parameter greater than one.
+    """
+    max_index = size - 1
+    if not math.isfinite(value):
+        raise PulsePlanningError(
+            "BAD_POS",
+            f"Invalid {axis_name} coordinate: {value}",
+        )
+
+    if value < 0.0:
+        distance = -value
+        if distance > max_extrapolation:
+            raise PulsePlanningError(
+                "TILT_OUT_OF_RANGE",
+                f"{axis_name} extrapolation too large: {distance:.2f}",
+            )
+        return 0, 1, value
+
+    if value > float(max_index):
+        distance = value - max_index
+        if distance > max_extrapolation:
+            raise PulsePlanningError(
+                "TILT_OUT_OF_RANGE",
+                f"{axis_name} extrapolation too large: {distance:.2f}",
+            )
+        return max_index - 1, max_index, value - (max_index - 1)
+
+    if value >= float(max_index):
+        return max_index - 1, max_index, 1.0
+
+    index0 = int(math.floor(value))
+    return index0, index0 + 1, value - index0
 
 
 def _bilinear(v00: int, v01: int, v10: int, v11: int, dx: float, dy: float) -> float:
