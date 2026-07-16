@@ -11,7 +11,7 @@
 
 /* 固定等待时间，按实际机械臂运动时间调整。 */
 #define ARM_STARTUP_ZERO_DELAY_MS    2000U
-#define ARM_PICK_MOVE_DELAY_MS       6000U
+#define ARM_PICK_MOVE_DELAY_MS       6500U
 #define ARM_SERVO_MOVE_DELAY_MS       1000U
 #define ARM_MAGNET_SETTLE_DELAY_MS   1000U
 #define ARM_MAGNET_RELEASE_DELAY_MS   300U
@@ -79,6 +79,15 @@ void StartMotorTask(void *argument)
 
         case ARM_MAGNET_SETTLING:
             if (arm_delay_elapsed(ARM_MAGNET_SETTLE_DELAY_MS)) {
+                /* 吸棋稳定后先升起舵机，再移动到落子位置。 */
+                SG90_SetAngle(High_Angle);
+                arm_state_start_tick = HAL_GetTick();
+                arm_state = ARM_SERVO_RAISING_TO_PLACE;
+            }
+            break;
+
+        case ARM_SERVO_RAISING_TO_PLACE:
+            if (arm_delay_elapsed(ARM_SERVO_MOVE_DELAY_MS)) {
                 Move_Pos(arm_cmd.place_x, arm_cmd.place_y);
                 arm_state_start_tick = HAL_GetTick();
                 arm_state = ARM_MOVING_TO_PLACE;
@@ -92,10 +101,19 @@ void StartMotorTask(void *argument)
             break;
 
         case ARM_PLACE_ARRIVED:
-            /* 到达下棋位置后先断开电磁铁。 */
-            Magnet_OFF();
+            /* 到达落子位置后先降下舵机。 */
+            SG90_SetAngle(Low_Angle);
             arm_state_start_tick = HAL_GetTick();
-            arm_state = ARM_MAGNET_RELEASING;
+            arm_state = ARM_SERVO_LOWERING_TO_PLACE;
+            break;
+
+        case ARM_SERVO_LOWERING_TO_PLACE:
+            if (arm_delay_elapsed(ARM_SERVO_MOVE_DELAY_MS)) {
+                /* 舵机下降到位后再断开电磁铁。 */
+                Magnet_OFF();
+                arm_state_start_tick = HAL_GetTick();
+                arm_state = ARM_MAGNET_RELEASING;
+            }
             break;
 
         case ARM_MAGNET_RELEASING:

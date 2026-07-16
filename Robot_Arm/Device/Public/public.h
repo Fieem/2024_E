@@ -25,9 +25,11 @@ typedef enum {
     ARM_MOVING_TO_PICK, /* 移动到取子位置                  */
     ARM_SERVO_LOWERING, /* 舵机下降                       */
     ARM_MAGNET_SETTLING,/* 电磁铁吸合稳定等待             */
+    ARM_SERVO_RAISING_TO_PLACE, /* 吸棋后升起               */
     ARM_PICK_ARRIVED,   /* 到位，吸合电磁铁取子            */
     ARM_MOVING_TO_PLACE,/* 移动到放子位置                  */
     ARM_PLACE_ARRIVED,  /* 到位，释放电磁铁放子            */
+    ARM_SERVO_LOWERING_TO_PLACE, /* 落子前下降             */
     ARM_MAGNET_RELEASING,/* 电磁铁释放等待                 */
     ARM_SERVO_RAISING,  /* 舵机上升                       */
     ARM_MOVING_TO_ZERO, /* 移动回零点                     */
