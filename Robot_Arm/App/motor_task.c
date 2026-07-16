@@ -132,6 +132,7 @@ void StartMotorTask(void *argument)
                 Emm_V5_MMCL_Origin_Trigger_Return(1, 0, false);
                 Emm_V5_MMCL_Origin_Trigger_Return(2, 0, false);
                 Emm_V5_Multi_Motor_Cmd(0);
+                HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_RESET);
                 arm_state_start_tick = HAL_GetTick();
                 arm_state = ARM_MOVING_TO_ZERO;
             }
@@ -139,6 +140,7 @@ void StartMotorTask(void *argument)
 
         case ARM_MOVING_TO_ZERO:
             if (arm_delay_elapsed(ARM_RETURN_ZERO_DELAY_MS)) {
+                HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_SET);
                 arm_cmd.type = CMD_NONE;
                 arm_state = ARM_IDLE;
             }

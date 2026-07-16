@@ -170,3 +170,8 @@ void comm_send_ready(void)
     const char *msg = "READY\n";
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, 6, 100);
 }
+void comm_send_new(void)
+{
+    const char *msg = "NEW\n";
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, 3, 100);
+}
